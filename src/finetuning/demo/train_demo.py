@@ -21,7 +21,7 @@ if __name__ == '__main__':
     parser.add_argument('--compile_model', type=bool, default = False)
     args = parser.parse_args()
     
-    device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
+    device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('mps')
 
     config = load_config_as_namespace(args.config)
     config.log_dir = args.log_dir

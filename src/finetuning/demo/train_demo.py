@@ -21,7 +21,6 @@ if __name__ == '__main__':
     parser.add_argument('--compile_model', type=bool, default = False)
     args = parser.parse_args()
     
-    device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('mps')
 
     config = load_config_as_namespace(args.config)
     config.log_dir = args.log_dir
@@ -61,8 +60,8 @@ if __name__ == '__main__':
 
     if args.compile_model:
         torch.set_float32_matmul_precision('high')
-        model.to(device)
-        print(device)
+        #model.to(device)
+      
         model.compile_for_training()
         
 

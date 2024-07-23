@@ -56,7 +56,7 @@ torchvision==0.18.1
 tornado==6.4.1
 tqdm==4.66.4
 traitlets==5.14.3
-transformers==4.42.4
+transformers==4.41
 typing_extensions==4.12.2
 urllib3==2.2.2
 wcwidth==0.2.13

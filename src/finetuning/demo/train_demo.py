@@ -1,5 +1,4 @@
 import os
-os.environ["TOKENIZERS_PARALLELISM"] = "true"
 import argparse
 import random
 import json
@@ -13,6 +12,13 @@ from gliner.data_processing.collator import DataCollatorWithPadding
 from gliner.utils import load_config_as_namespace
 from gliner.data_processing import WordsSplitter, GLiNERDataset
 
+# Check if MPS is available and set the device accordingly
+if torch.backends.mps.is_available():
+    device = torch.device("mps")
+    print("Using MPS device")
+else:
+    device = torch.device("cpu")
+    print("MPS not available, using CPU")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -21,7 +27,6 @@ if __name__ == '__main__':
     parser.add_argument('--compile_model', type=bool, default = False)
     args = parser.parse_args()
     
-
     config = load_config_as_namespace(args.config)
     config.log_dir = args.log_dir
 
@@ -31,18 +36,17 @@ if __name__ == '__main__':
         data = json.load(f)
 
     print('Dataset size:', len(data))
-    #shuffle
+    # Shuffle the dataset
     random.shuffle(data)    
     print('Dataset is shuffled...')
 
-    train_data = data[:int(len(data)*0.9)]
-    test_data = data[int(len(data)*0.9):]
+    train_data = data[:int(len(data) * 0.9)]
+    test_data = data[int(len(data) * 0.9):]
 
-    print('Dataset is splitted...')
-
+    print('Dataset is split...')
 
     tokenizer = AutoTokenizer.from_pretrained(model_config.model_name)
-    model_config.class_token_index=len(tokenizer)
+    model_config.class_token_index = len(tokenizer)
     tokenizer.add_tokens([model_config.ent_token, model_config.sep_token])
     model_config.vocab_size = len(tokenizer)
     
@@ -55,15 +59,15 @@ if __name__ == '__main__':
 
     model = GLiNER(model_config, tokenizer=tokenizer, words_splitter=words_splitter)
     model.resize_token_embeddings([model_config.ent_token, model_config.sep_token], 
-                                  set_class_token_index = False,
+                                  set_class_token_index=False,
                                   add_tokens_to_tokenizer=False)
+
+    # Move model to device
+    model.to(device)
 
     if args.compile_model:
         torch.set_float32_matmul_precision('high')
-        #model.to(device)
-      
         model.compile_for_training()
-        
 
     training_args = TrainingArguments(
         output_dir=config.log_dir,
@@ -78,12 +82,14 @@ if __name__ == '__main__':
         max_grad_norm=config.max_grad_norm,
         max_steps=config.num_steps,
         evaluation_strategy="epoch",
-        save_steps = config.eval_every,
+        save_steps=config.eval_every,
         save_total_limit=config.save_total_limit,
-        dataloader_num_workers = 8,
-        use_cpu = False,
+        dataloader_num_workers=8,
+        use_cpu=False,
         report_to="none",
-        )
+        gradient_accumulation_steps=4,
+        #fp16=True  # Enable mixed precision
+    )
 
     trainer = Trainer(
         model=model,

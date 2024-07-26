@@ -3,11 +3,10 @@ import argparse
 import random
 import json
 
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, Trainer, TrainingArguments
 import torch
 
 from gliner import GLiNERConfig, GLiNER
-from gliner.training import Trainer, TrainingArguments
 from gliner.data_processing.collator import DataCollatorWithPadding
 from gliner.utils import load_config_as_namespace
 from gliner.data_processing import WordsSplitter, GLiNERDataset
@@ -20,11 +19,24 @@ else:
     device = torch.device("cpu")
     print("MPS not available, using CPU")
 
+def freeze_all_layers_except_last(model):
+    """
+    Freeze all layers except for the last one in the model.
+    """
+    for name, param in model.named_parameters():
+        # Identify the last layer by checking the name pattern
+        if 'encoder.layer.' in name and 'encoder.layer.11.' in name:
+            # Unfreeze parameters in the last layer
+            param.requires_grad = True
+        else:
+            # Freeze all other parameters
+            param.requires_grad = False
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config', type=str, default= "config.yaml")
-    parser.add_argument('--log_dir', type=str, default = 'models/')
-    parser.add_argument('--compile_model', type=bool, default = False)
+    parser.add_argument('--config', type=str, default="config.yaml")
+    parser.add_argument('--log_dir', type=str, default='models/')
+    parser.add_argument('--compile_model', type=bool, default=False)
     args = parser.parse_args()
     
     config = load_config_as_namespace(args.config)
@@ -36,7 +48,6 @@ if __name__ == '__main__':
         data = json.load(f)
 
     print('Dataset size:', len(data))
-    # Shuffle the dataset
     random.shuffle(data)    
     print('Dataset is shuffled...')
 
@@ -62,8 +73,10 @@ if __name__ == '__main__':
                                   set_class_token_index=False,
                                   add_tokens_to_tokenizer=False)
 
-    # Move model to device
     model.to(device)
+
+    # Freeze all layers except the last one
+    freeze_all_layers_except_last(model)
 
     if args.compile_model:
         torch.set_float32_matmul_precision('high')
@@ -73,22 +86,19 @@ if __name__ == '__main__':
         output_dir=config.log_dir,
         learning_rate=float(config.lr_encoder),
         weight_decay=float(config.weight_decay_encoder),
-        others_lr=float(config.lr_others),
-        others_weight_decay=float(config.weight_decay_other),
         lr_scheduler_type=config.scheduler_type,
         warmup_ratio=config.warmup_ratio,
-        per_device_train_batch_size=config.train_batch_size,
-        per_device_eval_batch_size=config.train_batch_size,
+        per_device_train_batch_size=1,  # Smaller batch size
+        per_device_eval_batch_size=1,  # Smaller batch size
         max_grad_norm=config.max_grad_norm,
         max_steps=config.num_steps,
         evaluation_strategy="epoch",
         save_steps=config.eval_every,
         save_total_limit=config.save_total_limit,
-        dataloader_num_workers=8,
+        dataloader_num_workers=2,  # Reduced number of workers
         use_cpu=False,
         report_to="none",
-        gradient_accumulation_steps=4,
-        #fp16=True  # Enable mixed precision
+        gradient_accumulation_steps=8,  # Increased gradient accumulation
     )
 
     trainer = Trainer(
@@ -99,4 +109,5 @@ if __name__ == '__main__':
         tokenizer=tokenizer,
         data_collator=data_collator,
     )
+
     trainer.train()

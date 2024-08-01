@@ -19,7 +19,7 @@ device = get_device()
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str, default="config.yaml")
-    parser.add_argument('--log_dir', type=str, default='models/')
+    parser.add_argument('--log_dir', type=str, default='./models/')
     parser.add_argument('--compile_model', type=bool, default=False)
     args = parser.parse_args()
     
@@ -72,14 +72,14 @@ if __name__ == '__main__':
         weight_decay=float(config.weight_decay_encoder),
         lr_scheduler_type=config.scheduler_type,
         warmup_ratio=config.warmup_ratio,
-        per_device_train_batch_size=16,  # Increased batch size
-        per_device_eval_batch_size=16,  # Increased batch size
+        per_device_train_batch_size=16,  
+        per_device_eval_batch_size=16,  
         max_grad_norm=config.max_grad_norm,
         max_steps=config.num_steps,
         evaluation_strategy="epoch",
         save_steps=config.eval_every,
         save_total_limit=config.save_total_limit,
-        dataloader_num_workers=4,  # Increased number of workers
+        dataloader_num_workers=4,  
         use_cpu=False,
         report_to="none",
         gradient_accumulation_steps=2,  # Adjusted gradient accumulation

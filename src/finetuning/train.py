@@ -18,7 +18,7 @@ device = get_device()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config', type=str, default="config.yaml")
+    parser.add_argument('--config', type=str, default="./config.yaml")
     parser.add_argument('--log_dir', type=str, default='./models/')
     parser.add_argument('--compile_model', type=bool, default=False)
     args = parser.parse_args()
@@ -27,6 +27,7 @@ if __name__ == '__main__':
     config.log_dir = args.log_dir
 
     model_config = GLiNERConfig(**vars(config))
+    print(model_config)
 
     with open(config.train_data, 'r') as f:
         data = json.load(f)
@@ -40,7 +41,8 @@ if __name__ == '__main__':
 
     print('Dataset is split...')
 
-    tokenizer = AutoTokenizer.from_pretrained(model_config.model_name)
+    tokenizer = AutoTokenizer.from_pretrained("almanach/camembert-base", config="tokenizer.json")
+
     model_config.class_token_index = len(tokenizer)
     tokenizer.add_tokens([model_config.ent_token, model_config.sep_token])
     model_config.vocab_size = len(tokenizer)

@@ -4,7 +4,7 @@ GLiNER Model Training Script V0.2
 This script provides a comprehensive implementation of GLiNER model training
 with advanced features for handling overfitting and optimization.
 
-Author: Your Name
+Author: @sarrabenyahia
 Date: November 19, 2024
 License: MIT
 """

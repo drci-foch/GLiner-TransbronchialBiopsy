@@ -4,7 +4,7 @@ GLiNER Model Training Script V0.3
 This script provides a comprehensive implementation of GLiNER model training
 with advanced features for handling overfitting and optimization.
 
-Author: Your Name
+Author: @sarrabenyahia
 Date: November 19, 2024
 License: MIT
 """
@@ -190,7 +190,7 @@ class CyclicLRScheduler:
             optimizer: PyTorch optimizer
             base_lr: Base learning rate
             max_lr: Maximum learning rate
-            min_lr: Minimum learning rate
+            min_lr: Minimum learning rate 
             warmup_steps: Number of warmup steps
             cycles: Number of cycles
             total_steps: Total training steps

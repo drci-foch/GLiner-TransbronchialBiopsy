@@ -8,8 +8,6 @@ A specialized medical Named Entity Recognition (NER) system for analyzing transb
 
 </div>
 
-[Rest of README content remains the same...]
-
 ## 🎯 Project Overview
 
 GLiner-TransbronchialBiopsy is designed specifically for extracting medical entities from transbronchial biopsy reports, with a focus on transplant rejection analysis. The system combines state-of-the-art NLP techniques with domain-specific medical knowledge.

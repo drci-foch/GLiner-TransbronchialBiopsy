@@ -1,41 +1,91 @@
 # 🚑 GLiner-TransbronchialBiopsy
 
-This project fine-tunes the GLiNER model for named entity recognition tasks using the Hugging Face Transformers library. Follow the steps below to set up and run the project.
+A medical named entity recognition system using fine-tuned GLiNER models, with an interactive dashboard for medical text annotation.
 
 ## 📋 Prerequisites
+- Python 3.9+
+- CUDA-compatible GPU (recommended)
 
-- Python 3.9 or higher
-- Poetry (for dependency management)
-
-## ⚙️ Setup
-
-### 1️⃣ Create a Virtual Environment
-
-First, create a virtual environment to isolate your project's dependencies.
+## ⚙️ Installation
 
 ```bash
-# Create a virtual environment
+# Create virtual environment
 python -m venv gliner-env
 
-# Activate the virtual environment
-# On Windows
+# Activate virtual environment
+# Windows:
 gliner-env\Scripts\activate
-# On macOS/Linux
+# Unix/macOS:
 source gliner-env/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
 ```
 
-### 2️⃣ Install poetry
-If you haven't installed Poetry yet, you can do so by following the official installation guide [here](https://python-poetry.org/docs/).
+## 🚀 Features
 
-### 3️⃣ Install Project Dependencies
-Navigate to the root directory of your project (where the pyproject.toml file is located) and install the dependencies using Poetry.
+### Training Pipeline
+- Custom training loop with cyclic learning rate scheduler
+- Early stopping and gradient clipping
+- L2 regularization (weight decay)
+- Configurable hyperparameters
+- Progress monitoring and model checkpointing
 
-### 4️⃣ Run the Training Script
-Once all dependencies are installed, you can run the training script. Ensure that you are in the virtual environment and that the script has the correct permissions.
+### Interactive Dashboard
+- Real-time medical text annotation
+- Entity highlighting with color coding
+- Interactive statistics and visualizations
+- Adjustable confidence threshold
+- Entity distribution charts
+
+## 💻 Usage
+
+### Training
 ```bash
-# Run the training script
-python train.py --config path/to/your/config.yaml --log_dir path/to/save/models
+python train_overfit_gradient.py
 ```
 
+Key configuration options in `TrainingConfig`:
+- `data_path`: Path to training data
+- `batch_size`: Training batch size
+- `learning_rate`: Base learning rate
+- `num_steps`: Total training steps
 
+### Dashboard
+```bash
+streamlit run dashboard.py
+```
 
+The dashboard provides:
+- Text input area for medical documents
+- Color-coded entity highlighting
+- Interactive confidence threshold adjustment
+- Entity distribution visualization
+- Detailed entity statistics
+
+## 📊 Supported Entities
+- Site
+- Nombre Total De Fragments
+- Nombre Total De Fragments Alvéolés
+- Grade A/B
+- Rejet Chronique
+- Coloration C4d
+- And more medical-specific entities
+
+## 📈 Model Performance
+Monitor training progress and evaluation metrics through:
+- Loss tracking
+- Early stopping metrics
+- Evaluation steps
+- Model checkpoints
+
+## 🛠️ Configuration
+Adjust model parameters through `TrainingConfig` in `train_overfit_gradient.py`:
+```python
+config = TrainingConfig(
+    data_path="./data/data.json",
+    output_dir="./models/custom_run",
+    batch_size=8,
+    num_steps=1000
+)
+```

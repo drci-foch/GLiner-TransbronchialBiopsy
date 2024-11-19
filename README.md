@@ -2,11 +2,13 @@
   
 # 🚑 GLiner-TransbronchialBiopsy
 
-![Medical NER System](icon.png)
+<img src="icon.png" width="64" height="64" alt="Medical NER System">
 
 A specialized medical Named Entity Recognition (NER) system for analyzing transbronchial biopsy reports, powered by fine-tuned GLiNER models.
 
 </div>
+
+[Rest of README content remains the same...]
 
 ## 🎯 Project Overview
 

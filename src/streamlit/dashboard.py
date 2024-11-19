@@ -16,7 +16,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "true"
 
 class MedicalAnnotationDashboard:
     def __init__(self):
-        self.model = GLiNER.from_pretrained("../models/custom_run/checkpoint-1000", load_tokenizer=True)
+        self.model = GLiNER.from_pretrained("../finetuning/models/custom_run/checkpoint-1000", load_tokenizer=True)
 
         self.labels = [
             "Site", "Nombre Total De Fragments", "Nombre Total De Fragments Alvéolés",

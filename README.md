@@ -2,7 +2,7 @@
   
 # 🚑 GLiner-TransbronchialBiopsy
 
-<img src="icon.png" width="64" height="64" alt="Medical NER System">
+<img src="icon.png" width="500" height="500" alt="Medical NER System">
 
 A specialized medical Named Entity Recognition (NER) system for analyzing transbronchial biopsy reports, powered by fine-tuned GLiNER models.
 
@@ -75,13 +75,6 @@ trainer.train(config)
 streamlit run dashboard.py --server.port 8501
 ```
 
-## 📊 Performance Metrics
-
-- Entity Recognition Accuracy: 94.5%
-- F1 Score: 0.92
-- Processing Speed: ~100ms/report
-- Inter-annotator Agreement: 0.89 Kappa
-
 ## 🔄 Development Workflow
 
 1. Data Preparation
@@ -98,13 +91,6 @@ streamlit run dashboard.py --server.port 8501
    - Performance metrics
    - Clinical validation
    - Error analysis
-
-## 📚 Documentation
-
-Detailed documentation is available in the `docs/` directory:
-- `user_guide.md`: Complete usage instructions
-- `entity_guidelines.md`: Entity annotation guidelines
-- `api_reference.md`: API documentation
 
 ## 🤝 Contributing
 

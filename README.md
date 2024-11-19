@@ -49,6 +49,7 @@ pip install -r requirements.txt
 | Chronic Rejection | Presence indicators | "Rejet chronique minimal" |
 | C4d Staining | Staining results | "C4d négatif" |
 
+and others ...
 ## 💻 Usage Guide
 
 ### Model Training

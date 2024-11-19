@@ -1,5 +1,5 @@
 """
-GLiNER Model Training Script
+GLiNER Model Training Script V0.1
 
 This script handles the training of a GLiNER model for named entity recognition.
 It includes data loading, preprocessing, model configuration, and training setup.

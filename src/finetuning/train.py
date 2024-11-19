@@ -1,98 +1,200 @@
-import os
-import argparse
-import random
+"""
+GLiNER Model Training Script
+
+This script handles the training of a GLiNER model for named entity recognition.
+It includes data loading, preprocessing, model configuration, and training setup.
+
+Author: @sarrabenyahia 
+Created: November 19, 2024
+"""
+
 import json
+import random
+import os
+from typing import Dict, List, Optional, Union, Tuple
+from dataclasses import dataclass
 
-from transformers import AutoTokenizer, Trainer, TrainingArguments
 import torch
-
 from gliner import GLiNERConfig, GLiNER
-from gliner.data_processing.collator import DataCollatorWithPadding
+from gliner.training import Trainer, TrainingArguments
+from gliner.data_processing.collator import DataCollatorWithPadding, DataCollator
 from gliner.utils import load_config_as_namespace
 from gliner.data_processing import WordsSplitter, GLiNERDataset
-from utils import freeze_all_layers_except_last, get_device
 
 
-# Components of training
-device = get_device()
+@dataclass
+class TrainingConfig:
+    """Configuration class to store training parameters."""
+    data_path: str = "./data/data.json"
+    model_name: str = "almanach/camembert-bio-gliner-v0.1"
+    output_dir: str = "models"
+    train_split: float = 0.9
+    num_steps: int = 500
+    batch_size: int = 8
+    learning_rate: float = 5e-6
+    weight_decay: float = 0.01
+    others_lr: float = 1e-5
+    others_weight_decay: float = 0.01
+    lr_scheduler_type: str = "linear"
+    warmup_ratio: float = 0.1
+    focal_loss_alpha: float = 0.75
+    focal_loss_gamma: int = 2
+    save_steps: int = 100
+    save_total_limit: int = 10
+    dataloader_workers: int = 0
+    use_cpu: bool = False
+    seed: int = 42
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--config', type=str, default="config.yaml")
-    parser.add_argument('--log_dir', type=str, default='./models/')
-    parser.add_argument('--compile_model', type=bool, default=False)
-    args = parser.parse_args()
+
+def set_seed(seed: int) -> None:
+    """Set random seeds for reproducibility.
     
-    config = load_config_as_namespace(args.config)
-    config.log_dir = args.log_dir
+    Args:
+        seed (int): Random seed value
+    """
+    random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
 
-    model_config = GLiNERConfig(**vars(config))
 
-    with open(config.train_data, 'r') as f:
+def load_and_split_data(
+    data_path: str,
+    train_split: float,
+    seed: Optional[int] = None
+) -> Tuple[List[Dict], List[Dict]]:
+    """Load and split dataset into train and test sets.
+    
+    Args:
+        data_path (str): Path to the JSON data file
+        train_split (float): Proportion of data to use for training (0-1)
+        seed (int, optional): Random seed for shuffling
+        
+    Returns:
+        tuple: Training and test datasets
+    """
+    with open(data_path, "r") as f:
         data = json.load(f)
-
-    print('Dataset size:', len(data))
-    random.shuffle(data)    
-    print('Dataset is shuffled...')
-
-    train_data = data[:int(len(data) * 0.9)]
-    test_data = data[int(len(data) * 0.9):]
-
-    print('Dataset is split...')
-
-    tokenizer = AutoTokenizer.from_pretrained(model_config.model_name)
-    model_config.class_token_index = len(tokenizer)
-    tokenizer.add_tokens([model_config.ent_token, model_config.sep_token])
-    model_config.vocab_size = len(tokenizer)
     
-    words_splitter = WordsSplitter(model_config.words_splitter_type)
+    print(f'Dataset size: {len(data)}')
+    
+    if seed is not None:
+        random.seed(seed)
+    random.shuffle(data)
+    
+    split_idx = int(len(data) * train_split)
+    return data[:split_idx], data[split_idx:]
 
-    train_dataset = GLiNERDataset(train_data, model_config, tokenizer, words_splitter)
-    test_dataset = GLiNERDataset(test_data, model_config, tokenizer, words_splitter)
 
-    data_collator = DataCollatorWithPadding(model_config)
+def setup_device() -> torch.device:
+    """Setup and print CUDA device information.
+    
+    Returns:
+        torch.device: Selected device (CPU or CUDA)
+    """
+    print("CUDA available:", torch.cuda.is_available())
+    print("CUDA version:", torch.version.cuda)
+    print("GPU count:", torch.cuda.device_count())
+    print("GPU name:", torch.cuda.get_device_name(0) if torch.cuda.is_available() else "No GPU")
+    
+    return torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
 
-    model = GLiNER(model_config, tokenizer=tokenizer, words_splitter=words_splitter)
-    model.resize_token_embeddings([model_config.ent_token, model_config.sep_token], 
-                                  set_class_token_index=False,
-                                  add_tokens_to_tokenizer=False)
 
-    model.to(device)
+def calculate_num_epochs(num_steps: int, data_size: int, batch_size: int) -> int:
+    """Calculate number of epochs based on desired steps and data size.
+    
+    Args:
+        num_steps (int): Desired number of training steps
+        data_size (int): Size of training dataset
+        batch_size (int): Batch size
+        
+    Returns:
+        int: Number of epochs to train
+    """
+    num_batches = data_size // batch_size
+    return max(1, num_steps // num_batches)
 
-    # Freeze all layers except the last one
-    freeze_all_layers_except_last(model)
 
-    if args.compile_model:
-        torch.set_float32_matmul_precision('high')
-        model.compile_for_training()
-
-    training_args = TrainingArguments(
-        output_dir=config.log_dir,
-        learning_rate=float(config.lr_encoder),
-        weight_decay=float(config.weight_decay_encoder),
-        lr_scheduler_type=config.scheduler_type,
-        warmup_ratio=config.warmup_ratio,
-        per_device_train_batch_size=16,  
-        per_device_eval_batch_size=16,  
-        max_grad_norm=config.max_grad_norm,
-        max_steps=config.num_steps,
-        evaluation_strategy="epoch",
-        save_steps=config.eval_every,
-        save_total_limit=config.save_total_limit,
-        dataloader_num_workers=4,  
-        use_cpu=False,
-        report_to="none",
-        gradient_accumulation_steps=2,  # Adjusted gradient accumulation
-        fp16=True,  # Enable mixed precision training
+def train_gliner_model(config: TrainingConfig) -> None:
+    """Main training function for GLiNER model.
+    
+    Args:
+        config (TrainingConfig): Training configuration parameters
+    """
+    # Set environment variables and seed
+    os.environ["TOKENIZERS_PARALLELISM"] = "true"
+    set_seed(config.seed)
+    
+    # Load and split data
+    train_dataset, test_dataset = load_and_split_data(
+        config.data_path,
+        config.train_split,
+        config.seed
     )
-
+    
+    # Setup device
+    device = setup_device()
+    
+    # Initialize model
+    model = GLiNER.from_pretrained(config.model_name)
+    model.to(device)
+    
+    # Setup data collator
+    data_collator = DataCollator(
+        model.config,
+        data_processor=model.data_processor,
+        prepare_labels=True
+    )
+    
+    # Calculate number of epochs
+    num_epochs = calculate_num_epochs(
+        config.num_steps,
+        len(train_dataset),
+        config.batch_size
+    )
+    
+    # Setup training arguments
+    training_args = TrainingArguments(
+        output_dir=config.output_dir,
+        learning_rate=config.learning_rate,
+        weight_decay=config.weight_decay,
+        others_lr=config.others_lr,
+        others_weight_decay=config.others_weight_decay,
+        lr_scheduler_type=config.lr_scheduler_type,
+        warmup_ratio=config.warmup_ratio,
+        per_device_train_batch_size=config.batch_size,
+        per_device_eval_batch_size=config.batch_size,
+        focal_loss_alpha=config.focal_loss_alpha,
+        focal_loss_gamma=config.focal_loss_gamma,
+        num_train_epochs=num_epochs,
+        eval_strategy="steps",
+        save_steps=config.save_steps,
+        save_total_limit=config.save_total_limit,
+        dataloader_num_workers=config.dataloader_workers,
+        use_cpu=config.use_cpu,
+        report_to="none",
+    )
+    
+    # Initialize trainer
     trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=test_dataset,
-        tokenizer=tokenizer,
+        tokenizer=model.data_processor.transformer_tokenizer,
         data_collator=data_collator,
     )
-
+    
+    # Start training
     trainer.train()
+
+
+if __name__ == "__main__":
+    config = TrainingConfig(
+        data_path="./data/data.json",
+        output_dir="./models/BTB_gliner/",
+        batch_size=16,
+        num_steps=1000
+    )
+    train_gliner_model(config)
+

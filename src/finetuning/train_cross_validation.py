@@ -123,8 +123,6 @@ class KFoldTrainingResults:
             }
         return aggregates
 
-
-
 class EarlyStopping:
     """Early stopping handler to prevent overfitting."""
     

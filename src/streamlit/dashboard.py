@@ -16,7 +16,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "true"
 
 class MedicalAnnotationDashboard:
     def __init__(self):
-        self.model = GLiNER.from_pretrained("../finetuning/models/custom_run/checkpoint-1000", load_tokenizer=True)
+        self.model = GLiNER.from_pretrained("../finetuning/models/kfold_run/fold_3/checkpoint-1000", load_tokenizer=True)
 
         self.labels = [
             "Site", "Nombre Total De Fragments", "Nombre Total De Fragments Alvéolés",
@@ -235,11 +235,8 @@ class MedicalAnnotationDashboard:
             input_text = st.text_area(
                 "",
                 height=300,
-                value="""1/ Lavage broncho alvéolaire :
-Liquide hypercellulaire avec légère polynucléose à polynucléaires neutrophiles sans agent pathogène
-retrouvé.
-2/ Biopsies transbronchiques : 7 fragments.
-Absence de rejet aigu cellulaire bronchiolaire ou parenchymateux. A0 B0
+                value="""2/ Biopsies transbronchiques : 7 fragments.
+Absence de rejet aigu cellulaire bronchiolaire ou parenchymateux. A0 et B0.
 Absence de lésions évocatrices de rejet aigu humoral.
 Absence de lésions évocatrices de rejet chronique.
 Absence d'inclusion virale et notamment d'inclusion de type CMV."""

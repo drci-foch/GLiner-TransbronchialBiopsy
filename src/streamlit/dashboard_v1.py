@@ -250,10 +250,18 @@ class MedicalAnnotationDashboard:
             biopsy_text = re.sub(r'\s+', ' ', biopsy_text)
             biopsy_text = biopsy_text.strip('.- \t\n\r')
             
-            # Preserve grade notation if present at the end
-            grade_match = re.search(r'(?:A\d\s*B\d\.?)\s*$', section_text)
-            if grade_match:
-                biopsy_text += ' ' + grade_match.group(0)
+            # Format grade notations - add space between grades
+            # Handle various grade notation formats
+            grade_patterns = [
+                (r'A(\d|\+|x|X)B(\d|\+|x|X)', r'A\1 B\2'),  # A0B0, A1B0, AxB0, etc.
+                (r'[Aa](\d|\+|x|X)[Bb](\d|\+|x|X)', r'A\1 B\2')  # Handle lowercase variations
+            ]
+            
+            for pattern, replacement in grade_patterns:
+                biopsy_text = re.sub(pattern, replacement, biopsy_text)
+            
+            # Remove any extra spaces that might have been created
+            biopsy_text = re.sub(r'\s+', ' ', biopsy_text).strip()
             
             print("\n=== Final Extracted Text ===")
             print(biopsy_text)
@@ -263,21 +271,42 @@ class MedicalAnnotationDashboard:
         return None
     
     def create_structured_data(self, entities, filename):
-        """Convert entities to structured format with filename"""
+        """Convert entities to structured format with filename, handling multiple entities per label"""
         entity_dict = {
             'Nom_Document': filename,
             'Date_Structuration': pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
         }
         
+        # Initialize dictionary to collect multiple entities per label
+        collected_entities = {}
+        collected_scores = {}
+        
+        # Initialize all labels - Notice we're not adding _Score suffix to all columns
         for label in self.labels:
             entity_dict[label] = None
-            entity_dict[f"{label}_Score"] = None
-            
+            collected_entities[label] = []
+            collected_scores[label] = []
+        
+        # Add a single Scores column
+        entity_dict['Scores'] = {}
+        
+        # Collect all entities and scores by label
         for entity in entities:
             label = entity['label']
-            entity_dict[label] = entity['text']
-            entity_dict[f"{label}_Score"] = round(entity['score'], 3)
-            
+            collected_entities[label].append(entity['text'])
+            collected_scores[label].append(round(entity['score'], 3))
+        
+        # Join multiple entities with semicolons and store scores in a more compact way
+        for label in self.labels:
+            if collected_entities[label]:
+                entity_dict[label] = ";".join(collected_entities[label])
+                # Store scores in a more compact format
+                if collected_scores[label]:
+                    entity_dict['Scores'][label] = [round(score, 2) for score in collected_scores[label]]
+        
+        # Convert scores dictionary to string representation
+        entity_dict['Scores'] = str(entity_dict['Scores'])
+        
         return entity_dict
 
     def update_results_dataframe(self, new_data):
@@ -526,10 +555,6 @@ class MedicalAnnotationDashboard:
                     st.session_state.processed_files = {}
                     st.rerun()
 
-        # Main content area
-    
-        
-        
         # File upload
         uploaded_files = st.file_uploader(
             "Choisissez un ou plusieurs fichiers (PDF ou TXT)",
@@ -587,27 +612,42 @@ class MedicalAnnotationDashboard:
             tab1, tab2 = st.tabs(["📊 Données structurées", "📈 Statistiques"])
             
             with tab1:
+                # Configure column display order and format
+                column_order = ['Nom_Document', 'Date_Structuration']
+                for label in self.labels:
+                    column_order.append(label)
+                column_order.append('Scores')
+                
+                # Reorder columns
+                display_df = st.session_state.results_df[column_order]
+                
                 # Display interactive dataframe
                 st.dataframe(
-                    st.session_state.results_df,
+                    display_df,
                     column_config={
                         "Nom_Document": st.column_config.Column(
                             "Document",
                             help="Cliquez pour voir le document",
                             width="medium",
                         ),
-                        "Date_Analyse": st.column_config.DatetimeColumn(
+                        "Date_Structuration": st.column_config.DatetimeColumn(
                             "Date d'analyse",
                             help="Date et heure de l'analyse",
                             format="DD/MM/YYYY HH:mm",
                             width="medium",
+                        ),
+                        "Scores": st.column_config.Column(
+                            "Scores de confiance",
+                            help="Scores de confiance pour chaque entité détectée",
+                            width="medium",
+                            disabled=True
                         )
                     },
                     hide_index=True,
                 )
                 
                 # Add modal viewers for each file
-                for idx, row in st.session_state.results_df.iterrows():
+                for idx, row in display_df.iterrows():
                     filename = row['Nom_Document']
                     if filename in st.session_state.processed_files:
                         file_content = st.session_state.processed_files[filename]
@@ -615,48 +655,48 @@ class MedicalAnnotationDashboard:
 
                 # Download button for Excel with proper styling
                 st.markdown("### Export des résultats")
-                st.markdown(self.get_excel_download_link(st.session_state.results_df), unsafe_allow_html=True)
+                st.markdown(self.get_excel_download_link(display_df), unsafe_allow_html=True)
             
             with tab2:
-                if len(st.session_state.results_df) > 0:
+                if len(display_df) > 0:
                     # Create statistics and visualizations
                     col_stats1, col_stats2 = st.columns([1, 1])
                     
                     with col_stats1:
                         st.markdown("### Distribution des entités par document")
-                        for filename in st.session_state.results_df['Nom_Document'].unique():
+                        for filename in display_df['Nom_Document'].unique():
                             st.markdown(f"**Document : {filename}**")
-                            doc_data = st.session_state.results_df[
-                                st.session_state.results_df['Nom_Document'] == filename
+                            doc_data = display_df[
+                                display_df['Nom_Document'] == filename
                             ]
                             entities_found = [col for col in self.labels if doc_data[col].notna().any()]
                             if entities_found:
                                 for entity in entities_found:
-                                    score = doc_data[f"{entity}_Score"].iloc[0]
-                                    st.markdown(
-                                        f"- {entity}: {doc_data[entity].iloc[0]} "
-                                        f"(score: {score:.3f})"
-                                    )
+                                    value = doc_data[entity].iloc[0]
+                                    if pd.notna(value):  # Only show non-null values
+                                        st.markdown(f"- {entity}: {value}")
                             else:
                                 st.markdown("*Aucune entité détectée*")
                             st.markdown("---")
                     
                     with col_stats2:
                         st.markdown("### Statistiques globales")
-                        total_docs = len(st.session_state.results_df)
+                        total_docs = len(display_df)
                         total_entities = sum(
-                            st.session_state.results_df[label].notna().sum()
+                            display_df[label].notna().sum()
                             for label in self.labels
                         )
                         
                         st.metric("Documents analysés", total_docs)
                         st.metric("Entités détectées", total_entities)
-                        st.metric(
-                            "Moyenne d'entités par document",
-                            f"{total_entities/total_docs:.1f}"
-                        )
+                        if total_docs > 0:
+                            st.metric(
+                                "Moyenne d'entités par document",
+                                f"{total_entities/total_docs:.1f}"
+                            )
                 else:
                     st.info("Aucune donnée disponible pour les statistiques")
+
 
 if __name__ == "__main__":
     dashboard = MedicalAnnotationDashboard()

@@ -124,6 +124,7 @@ class MedicalAnnotationDashboard:
                         continue
                         
                 # If all encodings fail, try with errors='replace'
+                print(file_content.decode('utf-8', errors='replace'))
                 return file_content.decode('utf-8', errors='replace')
             else:
                 raise ValueError(f"Unsupported file type: {file_type}")
@@ -160,28 +161,107 @@ class MedicalAnnotationDashboard:
                             height=400, disabled=True)
 
     def extract_conclusion(self, text):
-        """Extract conclusion section from the text"""
-        patterns = [
-            # Pattern for "C O N C L U S I O N" with spaced letters
-            r"C\s*O\s*N\s*C\s*L\s*U\s*S\s*I\s*O\s*N\s*[\n\r]*([^C]+?)(?=(?:[A-Z][A-Z\s]{8,}|$))",
-            # Original patterns as fallback
-            r"(?i)CONCLUSION[\s:]+([^\n]+(?:\n(?![\r\n])[^\n]+)*)",
-            r"(?i)CONCLUSION ET SYNTHESE[\s:]+([^\n]+(?:\n(?![\r\n])[^\n]+)*)",
-            r"(?i)SYNTHESE[\s:]+([^\n]+(?:\n(?![\r\n])[^\n]+)*)"
+        """Extract only the biopsy section from the conclusion with debug prints"""
+        # First find the CONCLUSION section
+        conclusion_patterns = [
+            r"C\s*O\s*N\s*C\s*L\s*U\s*S\s*I\s*O\s*N\s*[\n\r]*",
+            r"(?i)CONCLUSION[\s:]+",
+            r"(?i)CONCLUSION ET SYNTHESE[\s:]+",
+            r"(?i)SYNTHESE[\s:]+"
         ]
         
-        for pattern in patterns:
+        # Print the original text
+        print("\n=== Original Text ===")
+        print(text)
+        
+        # Find conclusion section
+        conclusion_text = None
+        for pattern in conclusion_patterns:
             match = re.search(pattern, text, re.MULTILINE | re.DOTALL)
             if match:
-                conclusion_text = match.group(1).strip()
-                # Clean up the text
-                conclusion_text = re.sub(r'\s+', ' ', conclusion_text)
-                conclusion_text = conclusion_text.replace('Suresnes,', '')
-                conclusion_text = conclusion_text.split('ADICAP')[0]  # Remove ADICAP codes
-                conclusion_text = conclusion_text.split('Compte-rendu')[0]  # Remove signature line
-                return conclusion_text.strip()
-        return None
+                conclusion_text = text[match.end():]
+                print("\n=== Found Conclusion Section ===")
+                print(conclusion_text)
+                break
+        
+        if not conclusion_text:
+            print("\nNo conclusion section found!")
+            return None
 
+        # Pattern for various forms of biopsy section, including Roman numerals
+        biopsy_start_patterns = [
+            r"(?:I\s*[-\s]+)?(?:B|b)iopsies?\s+(?:t|T)ransbronchiques?(?:\s*\([^)]*\))?[\s:]+",
+            r"(?:I\s*[-\s]+)(?:B|b)iopsies?\s+(?:t|T)ransbronchiques?(?:\s*\([^)]*\))?",
+            r"I\s*[-\s]+.*?(?:fragments?\s+biopsiques)"  # New pattern for this case
+        ]
+        
+        # Pattern for lavage section
+        lavage_patterns = [
+            r"(?:II|2)\s*[-\s]+(?:L|l)avage\s+(?:b|B)roncho[\s-]*(?:a|A)lvéolaire",
+            r"(?:L|l)avage\s+(?:b|B)roncho[\s-]*(?:a|A)lvéolaire"
+        ]
+
+        # Find biopsy section
+        biopsy_text = None
+        for bstart_pattern in biopsy_start_patterns:
+            match = re.search(bstart_pattern, conclusion_text, re.MULTILINE | re.DOTALL)
+            if match:
+                start_pos = match.start()
+                section_text = conclusion_text[start_pos:]
+                print("\n=== Found Biopsy Section Start ===")
+                print(section_text)
+                
+                # Look for the next section (lavage or end)
+                end_pos = None
+                
+                # Check for lavage section
+                for lavage_pattern in lavage_patterns:
+                    lavage_match = re.search(lavage_pattern, section_text)
+                    if lavage_match:
+                        end_pos = lavage_match.start()
+                        print("\n=== Found Lavage Section (End Marker) ===")
+                        print(f"Ends at position: {end_pos}")
+                        break
+                
+                # If no lavage section found, look for other end markers
+                if end_pos is None:
+                    end_markers = [
+                        r"(?:II|2)\s*[-\s]+",
+                        r"Suresnes,",
+                        r"ADICAP",
+                        r"Compte-rendu",
+                        r"\n\s*\n"
+                    ]
+                    
+                    for marker in end_markers:
+                        match = re.search(marker, section_text)
+                        if match and match.start() > 0:
+                            end_pos = match.start()
+                            print("\n=== Found End Marker ===")
+                            print(f"Marker: {marker}, Position: {end_pos}")
+                            break
+                
+                # Extract the text
+                biopsy_text = section_text[:end_pos] if end_pos else section_text
+                break
+        
+        if biopsy_text:
+            # Clean up the extracted text
+            biopsy_text = re.sub(r'\s+', ' ', biopsy_text)
+            biopsy_text = biopsy_text.strip('.- \t\n\r')
+            
+            # Preserve grade notation if present at the end
+            grade_match = re.search(r'(?:A\d\s*B\d\.?)\s*$', section_text)
+            if grade_match:
+                biopsy_text += ' ' + grade_match.group(0)
+            
+            print("\n=== Final Extracted Text ===")
+            print(biopsy_text)
+            return biopsy_text
+        
+        print("\nNo biopsy section found!")
+        return None
+    
     def create_structured_data(self, entities, filename):
         """Convert entities to structured format with filename"""
         entity_dict = {

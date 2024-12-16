@@ -11,6 +11,8 @@ import base64
 from typing import Dict, List
 import tempfile
 import mimetypes
+import json
+from datetime import datetime
 
 class MedicalAnnotationDashboard:
     def __init__(self):
@@ -43,6 +45,12 @@ class MedicalAnnotationDashboard:
             st.session_state.processed_files = {}
         if 'results_df' not in st.session_state:
             st.session_state.results_df = None
+        if 'corrections' not in st.session_state:
+            st.session_state.corrections = {}
+        
+        # Initialize corrections file path
+        self.corrections_file = "corrections_log.json"
+        self.load_corrections()
 
     def highlight_entities(self, text: str, entities: List[Dict]) -> str:
         """Highlight entities in text with custom styling"""
@@ -513,6 +521,109 @@ class MedicalAnnotationDashboard:
         return href
 
 
+    def load_corrections(self):
+        """Load existing corrections from file"""
+        try:
+            if os.path.exists(self.corrections_file):
+                with open(self.corrections_file, 'r', encoding='utf-8') as f:
+                    st.session_state.corrections = json.load(f)
+        except Exception as e:
+            st.error(f"Error loading corrections: {str(e)}")
+
+    def save_corrections(self):
+        """Save corrections to file"""
+        try:
+            with open(self.corrections_file, 'w', encoding='utf-8') as f:
+                json.dump(st.session_state.corrections, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            st.error(f"Error saving corrections: {str(e)}")
+
+    def add_correction(self, document_name: str, entity_type: str, original_value: str, corrected_value: str):
+        """Add a correction to the corrections log"""
+        correction = {
+            "timestamp": datetime.now().isoformat(),
+            "document": document_name,
+            "entity_type": entity_type,
+            "original_value": original_value,
+            "corrected_value": corrected_value
+        }
+        
+        if document_name not in st.session_state.corrections:
+            st.session_state.corrections[document_name] = []
+        
+        st.session_state.corrections[document_name].append(correction)
+        self.save_corrections()
+
+    def display_correction_interface(self, row_index: int, display_df: pd.DataFrame):
+        """Display correction interface for a specific row"""
+        document_name = display_df.iloc[row_index]['Nom_Document']
+        
+        st.markdown(f"### Corrections pour {document_name}")
+        
+        # Create columns for better layout
+        cols = st.columns(2)
+        
+        with cols[0]:
+            # Entity selection
+            entity_type = st.selectbox(
+                "Sélectionner l'entité à corriger",
+                self.labels,
+                key=f"entity_select_{row_index}"
+            )
+            
+            current_value = display_df.iloc[row_index][entity_type]
+            current_value = str(current_value) if pd.notna(current_value) else ""
+            
+            # Display current value
+            st.text_area(
+                "Valeur actuelle",
+                current_value,
+                disabled=True,
+                key=f"current_value_{row_index}"
+            )
+            
+            # Input for correction
+            corrected_value = st.text_area(
+                "Valeur corrigée",
+                key=f"correction_input_{row_index}"
+            )
+            
+            # Submit correction
+            if st.button("Soumettre la correction", key=f"submit_{row_index}"):
+                if corrected_value != current_value:
+                    self.add_correction(
+                        document_name,
+                        entity_type,
+                        current_value,
+                        corrected_value
+                    )
+                    st.success("Correction enregistrée!")
+                    
+                    # Update the display dataframe
+                    display_df.at[row_index, entity_type] = corrected_value
+                    st.session_state.results_df = display_df
+        
+        with cols[1]:
+            # Display correction history for this document
+            st.markdown("### Historique des corrections")
+            if document_name in st.session_state.corrections:
+                for correction in st.session_state.corrections[document_name]:
+                    with st.expander(
+                        f"{correction['entity_type']} - {correction['timestamp'][:16]}"
+                    ):
+                        st.markdown(f"**Original:** {correction['original_value']}")
+                        st.markdown(f"**Corrigé:** {correction['corrected_value']}")
+
+    def get_corrections_download_link(self):
+        """Generate download link for corrections log"""
+        if st.session_state.corrections:
+            json_str = json.dumps(st.session_state.corrections, ensure_ascii=False, indent=2)
+            b64 = base64.b64encode(json_str.encode('utf-8')).decode()
+            filename = f"corrections_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            href = f'<a href="data:application/json;base64,{b64}" download="{filename}" class="download-button">📥 Télécharger l\'historique des corrections (JSON)</a>'
+            return href
+        return None
+        
     def run(self):
         """Main application logic"""
         self.setup_page_config()
@@ -526,14 +637,16 @@ class MedicalAnnotationDashboard:
                 1. **Upload de fichiers** : Téléchargez vos documents (PDF ou TXT)
                 2. **Extraction** : Le système extraira automatiquement la conclusion
                 3. **Analyse** : Les entités seront détectées et structurées
-                4. **Export** : Téléchargez les résultats au format Excel
+                4. **Corrections** : Identifiez et corrigez les erreurs du modèle
+                5. **Export** : Téléchargez les résultats et l'historique des corrections
                 
                 ### Fonctionnalités :
                 - Support des fichiers PDF et TXT
                 - Détection automatique des conclusions
+                - Interface de correction des erreurs
                 - Visualisation interactive des documents
                 - Export des résultats en Excel
-                - Analyse statistique des entités détectées
+                - Export de l'historique des corrections
             """)
 
         # Sidebar controls
@@ -609,7 +722,11 @@ class MedicalAnnotationDashboard:
             st.subheader("Résultats d'analyse")
             
             # Display tabs for different views
-            tab1, tab2 = st.tabs(["📊 Données structurées", "📈 Statistiques"])
+            tab1, tab2, tab3 = st.tabs([
+                "📊 Données structurées",
+                "📈 Statistiques",
+                "✏️ Corrections"
+            ])
             
             with tab1:
                 # Configure column display order and format
@@ -653,9 +770,11 @@ class MedicalAnnotationDashboard:
                         file_content = st.session_state.processed_files[filename]
                         self.display_file_modal(file_content, filename)
 
-                # Download button for Excel with proper styling
+                # Download buttons with proper styling
                 st.markdown("### Export des résultats")
-                st.markdown(self.get_excel_download_link(display_df), unsafe_allow_html=True)
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.markdown(self.get_excel_download_link(display_df), unsafe_allow_html=True)
             
             with tab2:
                 if len(display_df) > 0:
@@ -666,9 +785,7 @@ class MedicalAnnotationDashboard:
                         st.markdown("### Distribution des entités par document")
                         for filename in display_df['Nom_Document'].unique():
                             st.markdown(f"**Document : {filename}**")
-                            doc_data = display_df[
-                                display_df['Nom_Document'] == filename
-                            ]
+                            doc_data = display_df[display_df['Nom_Document'] == filename]
                             entities_found = [col for col in self.labels if doc_data[col].notna().any()]
                             if entities_found:
                                 for entity in entities_found:
@@ -682,10 +799,7 @@ class MedicalAnnotationDashboard:
                     with col_stats2:
                         st.markdown("### Statistiques globales")
                         total_docs = len(display_df)
-                        total_entities = sum(
-                            display_df[label].notna().sum()
-                            for label in self.labels
-                        )
+                        total_entities = sum(display_df[label].notna().sum() for label in self.labels)
                         
                         st.metric("Documents analysés", total_docs)
                         st.metric("Entités détectées", total_entities)
@@ -694,9 +808,75 @@ class MedicalAnnotationDashboard:
                                 "Moyenne d'entités par document",
                                 f"{total_entities/total_docs:.1f}"
                             )
+
+                        # Add correction statistics
+                        if st.session_state.corrections:
+                            total_corrections = sum(
+                                len(corrs) for corrs in st.session_state.corrections.values()
+                            )
+                            st.metric("Corrections effectuées", total_corrections)
                 else:
                     st.info("Aucune donnée disponible pour les statistiques")
-
+            
+            with tab3:
+                st.markdown("### Interface de correction")
+                st.markdown("""
+                    Cette interface permet de corriger les erreurs de détection du modèle.
+                    Les corrections sont enregistrées automatiquement et peuvent être exportées.
+                """)
+                
+                # Document selection for correction
+                document_to_correct = st.selectbox(
+                    "Sélectionner un document à corriger",
+                    st.session_state.results_df['Nom_Document'].unique()
+                )
+                
+                if document_to_correct:
+                    # Create columns for layout
+                    col1, col2 = st.columns([3, 2])
+                    
+                    with col1:
+                        # Get the index of the selected document
+                        row_index = st.session_state.results_df[
+                            st.session_state.results_df['Nom_Document'] == document_to_correct
+                        ].index[0]
+                        
+                        # Display the correction interface
+                        self.display_correction_interface(
+                            row_index,
+                            st.session_state.results_df
+                        )
+                    
+                    with col2:
+                        # Show the original document content
+                        if document_to_correct in st.session_state.processed_files:
+                            st.markdown("### Document original")
+                            file_content = st.session_state.processed_files[document_to_correct]
+                            self.display_file_content(file_content, document_to_correct)
+                
+                # Download corrections log
+                corrections_link = self.get_corrections_download_link()
+                if corrections_link:
+                    st.markdown("### Export des corrections")
+                    st.markdown(corrections_link, unsafe_allow_html=True)
+                
+                # Display correction statistics
+                if st.session_state.corrections:
+                    with st.expander("📊 Statistiques des corrections", expanded=False):
+                        corrections_by_entity = {}
+                        for doc_corrs in st.session_state.corrections.values():
+                            for corr in doc_corrs:
+                                entity_type = corr['entity_type']
+                                corrections_by_entity[entity_type] = \
+                                    corrections_by_entity.get(entity_type, 0) + 1
+                        
+                        st.markdown("#### Corrections par type d'entité")
+                        for entity, count in sorted(
+                            corrections_by_entity.items(),
+                            key=lambda x: x[1],
+                            reverse=True
+                        ):
+                            st.markdown(f"- **{entity}**: {count} correction(s)")
 
 if __name__ == "__main__":
     dashboard = MedicalAnnotationDashboard()

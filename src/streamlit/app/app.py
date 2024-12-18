@@ -29,12 +29,16 @@ class MedicalAnnotationDashboard:
         # Load configuration
         self.config = Config()
         
+        # Create logs directory if it doesn't exist
+        logs_dir = Path("correction_logs")
+        logs_dir.mkdir(exist_ok=True)
+        
         # Initialize components
         self.model_handler = ModelHandler()
         self.text_processor = TextProcessor()
         self.file_handler = FileHandler()
         self.entity_processor = EntityProcessor()
-        self.corrections_manager = CorrectionsManager()
+        self.corrections_manager = CorrectionsManager(base_log_dir="correction_logs")
         self.chart_generator = ChartGenerator()
         self.ui = UIComponents()
         
@@ -139,12 +143,18 @@ class MedicalAnnotationDashboard:
     ):
         """Handle entity corrections"""
         if corrected_value != original_value:
+            # Get the full row data
+            row_data = st.session_state.results_df[
+                st.session_state.results_df['Nom_Document'] == document
+            ].iloc[0]
+            
             # Add correction
             self.corrections_manager.add_correction(
-                document,
-                entity_type,
-                original_value,
-                corrected_value
+                document=document,
+                entity_type=entity_type,
+                original_value=original_value,
+                corrected_value=corrected_value,
+                full_row_data=row_data
             )
             
             # Update results dataframe
@@ -157,6 +167,7 @@ class MedicalAnnotationDashboard:
         """Clear all results and processed files"""
         st.session_state.results_df = None
         st.session_state.processed_files = {}
+        self.corrections_manager.clear_session()  # Clear and create new session
         st.rerun()
     
     def _generate_charts(self) -> Dict[str, Any]:
@@ -217,6 +228,8 @@ class MedicalAnnotationDashboard:
                 
                 # Create download buttons
                 self.ui.create_download_buttons(st.session_state.results_df)
+                self.ui.create_logs_viewer()
+
             
         except Exception as e:
             logger.error(f"Application error: {str(e)}")

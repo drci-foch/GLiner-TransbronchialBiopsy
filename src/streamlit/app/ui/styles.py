@@ -2,6 +2,8 @@ import streamlit as st
 from typing import Optional
 import base64
 from pathlib import Path
+import json 
+import datetime
 
 class Styles:
     """Manages all styling for the application"""
@@ -374,52 +376,32 @@ class Styles:
         cls.apply_animations()
         cls.hide_streamlit_elements()
 
-# Example usage
-if __name__ == "__main__":
-    st.set_page_config(
-        page_title="Style Demo",
-        page_icon="🎨",
-        layout="wide"
-    )
-    
-    # Apply all styles
-    Styles.apply_all_styles()
-    
-    # Demo content
-    st.title("Style Demonstration")
-    
-    # File upload demo
-    st.file_uploader("Upload Files", type=["pdf", "txt"])
-    
-    # Button demo
-    if st.button("Sample Button"):
-        st.success("Button clicked!")
-    
-    # Table demo
-    import pandas as pd
-    df = pd.DataFrame({
-        'Column 1': [1, 2, 3],
-        'Column 2': ['A', 'B', 'C']
-    })
-    st.dataframe(df)
-    
-    # Download button demo
-    st.markdown(
-        '<a href="#" class="download-button">Download Sample</a>',
-        unsafe_allow_html=True
-    )
-    
-    # Tabs demo
-    tab1, tab2 = st.tabs(["Tab 1", "Tab 2"])
-    with tab1:
-        st.write("Content for tab 1")
-    with tab2:
-        st.write("Content for tab 2")
-    
-    # Entity highlight demo
-    st.markdown("""
-        <div class="highlighted-entity" style="background-color: #A1D6A3;">
-            Sample Entity
-            <span class="entity-tooltip">Entity Type</span>
-        </div>
-    """, unsafe_allow_html=True)
+
+    def create_logs_viewer(self):
+        """Create logs viewer interface"""
+        with st.expander("📋 Historique des sessions", expanded=False):
+            log_files = sorted(Path("correction_logs").glob("*.json"), reverse=True)
+            
+            for log_file in log_files:
+                timestamp = log_file.stem.replace("corrections_log_", "")
+                formatted_time = datetime.strptime(
+                    timestamp,
+                    '%Y%m%d_%H%M%S'
+                ).strftime('%Y-%m-%d %H:%M:%S')
+                
+                with st.expander(f"Session du {formatted_time}"):
+                    try:
+                        with open(log_file, 'r', encoding='utf-8') as f:
+                            log_data = json.load(f)
+                        
+                        # Display log data
+                        st.json(log_data)
+                        
+                        # Add download button for this log
+                        log_content = json.dumps(log_data, ensure_ascii=False, indent=2)
+                        b64 = base64.b64encode(log_content.encode()).decode()
+                        href = f'<a href="data:application/json;base64,{b64}" download="{log_file.name}" class="download-button">📥 Télécharger ce log</a>'
+                        st.markdown(href, unsafe_allow_html=True)
+                        
+                    except Exception as e:
+                        st.error(f"Erreur lors de la lecture du log: {str(e)}")

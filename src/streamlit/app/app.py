@@ -106,10 +106,11 @@ class MedicalAnnotationDashboard:
                 self.ui.show_warning(f"Aucune entité identifiée dans {uploaded_file.name}")
                 return False
             
-            # Process entities
+            # Process entities - Pass the conclusion text here
             structured_data = self.entity_processor.process_entities(
-                entities,
-                uploaded_file.name
+                entities=entities,
+                filename=uploaded_file.name,
+                conclusion_text=conclusion  # Add this parameter
             )
             
             # Update results dataframe
@@ -122,7 +123,7 @@ class MedicalAnnotationDashboard:
             logger.error(f"Error processing file {uploaded_file.name}: {str(e)}")
             self.ui.show_error(f"Erreur lors du traitement de {uploaded_file.name}")
             return False
-    
+        
     def _update_results_dataframe(self, new_data: Dict):
         """Update results dataframe with new data"""
         new_row = pd.DataFrame([new_data])
@@ -211,29 +212,94 @@ class MedicalAnnotationDashboard:
             
             # Display results if available
             if st.session_state.results_df is not None:
-                # Generate charts
-                charts = self._generate_charts()
+                st.markdown("---")
+                st.subheader("Résultats d'analyse")
                 
-                # Create results tabs
-                self.ui.create_results_tabs(
-                    st.session_state.results_df,
-                    st.session_state.corrections,
-                    lambda f: self.ui.create_file_viewer(
-                        st.session_state.processed_files[f],
-                        f
-                    ),
-                    self._handle_corrections,
-                    charts
-                )
+                # Display tabs for different views
+                tab1, tab2, tab3 = st.tabs([
+                    "📊 Données structurées",
+                    "📈 Statistiques",
+                    "✏️ Corrections"
+                ])
                 
-                # Create download buttons
-                self.ui.create_download_buttons(st.session_state.results_df)
+                with tab1:
+                    # Configure column order and format
+                    column_order = ['Nom_Document', 'Date_Structuration', 'Conclusion']
+                    for label in self.config.LABELS:
+                        column_order.append(label)
+                    column_order.append('Scores')
+                    
+                    # Reorder columns
+                    display_df = st.session_state.results_df[column_order]
+                    
+                    # Display interactive dataframe
+                    st.dataframe(
+                        display_df,
+                        column_config={
+                            "Nom_Document": st.column_config.Column(
+                                "Document",
+                                help="Cliquez pour voir le document",
+                                width="medium",
+                            ),
+                            "Date_Structuration": st.column_config.DatetimeColumn(
+                                "Date d'analyse",
+                                help="Date et heure de l'analyse",
+                                format="DD/MM/YYYY HH:mm",
+                                width="medium",
+                            ),
+                            "Conclusion": st.column_config.TextColumn(
+                                "Conclusion",
+                                help="Texte de la conclusion extraite",
+                                width="large",
+                            ),
+                            "Scores": st.column_config.Column(
+                                "Scores de confiance",
+                                help="Scores de confiance pour chaque entité détectée",
+                                width="medium",
+                                disabled=True
+                            )
+                        },
+                        hide_index=True,
+                    )
+                    
+                    # Add modal viewers for each file
+                    for filename in st.session_state.processed_files:
+                        if st.button(f"📄 Voir {filename}", key=f"view_{filename}"):
+                            self.ui.create_file_viewer(
+                                st.session_state.processed_files[filename],
+                                filename
+                            )
+                    
+                    # Download buttons
+                    self.ui.create_download_buttons(display_df)
+                
+                with tab2:
+                    # Generate and display charts
+                    charts = self.chart_generator.create_dashboard(
+                        st.session_state.results_df,
+                        self.corrections_manager.corrections,
+                        {}  # Entity scores would be added here
+                    )
+                    
+                    for name, fig in charts.items():
+                        st.plotly_chart(fig, use_container_width=True)
+                
+                with tab3:
+                    # Create correction interface
+                    self.ui.create_corrections_tab(
+                        st.session_state.results_df,
+                        self.corrections_manager.corrections,
+                        self._handle_corrections
+                    )
+                
+                # Add session history viewer
+                st.markdown("---")
                 self.ui.create_logs_viewer()
-
-            
+                
         except Exception as e:
             logger.error(f"Application error: {str(e)}")
             self.ui.show_error("Une erreur est survenue dans l'application")
+            raise  # Re-raise the exception for debugging
 
 if __name__ == "__main__":
     try:

@@ -7,7 +7,7 @@ from pathlib import Path
 import base64
 import json
 from config import config
-from io import BytesIO  # Add this import
+from io import BytesIO  
 
 
 class UIComponents:
@@ -231,15 +231,29 @@ class UIComponents:
                 )
             
             with col2:
-                st.markdown("### Historique des corrections")
                 if document in corrections:
-                    for correction in corrections[document]:
-                        with st.expander(
-                            f"{correction['entity_type']} - "
-                            f"{datetime.fromisoformat(correction['timestamp']).strftime('%Y-%m-%d %H:%M')}"
-                        ):
-                            st.markdown(f"**Original:** {correction['original_value']}")
-                            st.markdown(f"**Corrigé:** {correction['corrected_value']}")
+                    st.markdown("### État actuel du document")
+                    latest_state = corrections[document]["latest_state"]
+                    if latest_state:
+                        st.markdown(f"**Dernière mise à jour:** {latest_state['last_updated']}")
+                        for key, value in latest_state.items():
+                            if key not in ['last_updated', 'Nom_Document']:
+                                st.markdown(f"**{key}:** {value}")
+                    
+                    st.markdown("### Historique des corrections")
+                    history = corrections[document]["history"]
+                    if history:
+                        for idx, correction in enumerate(history):
+                            st.markdown(
+                                f"**Correction {idx + 1}** - "
+                                f"{datetime.fromisoformat(correction['timestamp']).strftime('%H:%M:%S')}"
+                            )
+                            st.markdown(f"- Entité: {correction['entity_type']}")
+                            st.markdown(f"- Valeur originale: {correction['original_value']}")
+                            st.markdown(f"- Valeur corrigée: {correction['corrected_value']}")
+                            st.markdown("---")
+                    else:
+                        st.info("Aucune correction pour ce document")
     
     def _create_correction_interface(
         self,
@@ -271,7 +285,111 @@ class UIComponents:
         
         if st.button("Soumettre la correction"):
             on_correction(document, entity_type, current_value, corrected_value)
-    
+
+    def create_corrections_tab(
+        self,
+        results_df: pd.DataFrame,
+        corrections: Dict,
+        on_correction: Callable
+    ):
+        """Create corrections tab"""
+        st.markdown("### Interface de correction")
+        st.markdown("""
+            Cette interface permet de corriger les erreurs de détection du modèle.
+            Les corrections sont enregistrées automatiquement et peuvent être exportées.
+        """)
+        
+        # Document selection
+        document = st.selectbox(
+            "Sélectionner un document à corriger",
+            results_df['Nom_Document'].unique()
+        )
+        
+        if document:
+            # Display the conclusion text first
+            conclusion_text = results_df[
+                results_df['Nom_Document'] == document
+            ]['Conclusion'].iloc[0]
+            
+            with st.expander("📄 Conclusion du document", expanded=True):
+                st.markdown("**Texte de la conclusion:**")
+                st.text_area(
+                    "",
+                    conclusion_text,
+                    height=150,
+                    disabled=True,
+                    key=f"conclusion_{document}"
+                )
+            
+            # Rest of the correction interface
+            col1, col2 = st.columns([3, 2])
+            
+            with col1:
+                # Entity selection
+                entity_type = st.selectbox(
+                    "Sélectionner l'entité à corriger",
+                    self.config.LABELS
+                )
+                
+                # Get current value
+                current_value = results_df[
+                    results_df['Nom_Document'] == document
+                ][entity_type].iloc[0]
+                current_value = str(current_value) if pd.notna(current_value) else ""
+                
+                # Display current value
+                st.text_area(
+                    "Valeur actuelle",
+                    current_value,
+                    disabled=True,
+                    key=f"current_{document}_{entity_type}"
+                )
+                
+                # Input for correction
+                corrected_value = st.text_area(
+                    "Valeur corrigée",
+                    key=f"correction_{document}_{entity_type}"
+                )
+                
+                # Submit button
+                if st.button("Soumettre la correction", key=f"submit_{document}_{entity_type}"):
+                    on_correction(document, entity_type, current_value, corrected_value)
+            
+            with col2:
+                # Display current document state
+                if document in corrections:
+                    st.markdown("### État actuel du document")
+                    latest_state = corrections[document]["latest_state"]
+                    if latest_state:
+                        st.markdown(f"**Dernière mise à jour:** {latest_state['last_updated']}")
+                        for key, value in latest_state.items():
+                            if key not in ['last_updated', 'Nom_Document', 'Conclusion']:
+                                st.markdown(f"**{key}:** {value}")
+                    
+                    st.markdown("### Historique des corrections")
+                    history = corrections[document]["history"]
+                    if history:
+                        for idx, correction in enumerate(history):
+                            st.markdown(
+                                f"**Correction {idx + 1}** - "
+                                f"{datetime.fromisoformat(correction['timestamp']).strftime('%H:%M:%S')}"
+                            )
+                            st.markdown(f"- Entité: {correction['entity_type']}")
+                            st.markdown(f"- Valeur originale: {correction['original_value']}")
+                            st.markdown(f"- Valeur corrigée: {correction['corrected_value']}")
+                            st.markdown("---")
+                    else:
+                        st.info("Aucune correction pour ce document")
+        
+        # Add download button for corrections log
+        if corrections:
+            st.markdown("### Export des corrections")
+            corrections_json = json.dumps(corrections, ensure_ascii=False, indent=2)
+            b64 = base64.b64encode(corrections_json.encode()).decode()
+            filename = f"corrections_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            href = f'<a href="data:application/json;base64,{b64}" download="{filename}" class="download-button">📥 Télécharger l\'historique des corrections</a>'
+            st.markdown(href, unsafe_allow_html=True)
+
     def create_download_buttons(self, results_df: pd.DataFrame):
         """Create download buttons for results"""
         st.markdown("### Export des résultats")
@@ -324,6 +442,78 @@ class UIComponents:
                     height=800
                 )
     
+    def create_logs_viewer(self):
+        """Create logs viewer interface"""
+        st.markdown("### 📋 Historique des sessions")
+        
+        # Get all log files from the correction_logs directory
+        log_files = sorted(
+            Path("correction_logs").glob("*.json"),
+            reverse=True
+        )
+        
+        if not log_files:
+            st.info("Aucun historique de session disponible")
+            return
+        
+        # Create tabs for different sessions
+        session_tabs = st.tabs([
+            f"Session {datetime.strptime(f.stem.replace('corrections_log_', ''), '%Y%m%d_%H%M%S').strftime('%Y-%m-%d %H:%M:%S')}"
+            for f in log_files
+        ])
+        
+        for tab, log_file in zip(session_tabs, log_files):
+            with tab:
+                try:
+                    with open(log_file, 'r', encoding='utf-8') as f:
+                        log_data = json.load(f)
+                    
+                    if log_data:
+                        # Count total documents and corrections
+                        total_docs = len(log_data)
+                        total_corrections = sum(
+                            len(doc_data.get("history", []))
+                            for doc_data in log_data.values()
+                        )
+                        
+                        # Show session summary
+                        st.markdown(f"**Documents traités:** {total_docs}")
+                        st.markdown(f"**Corrections totales:** {total_corrections}")
+                        
+                        # Show details for each document
+                        for doc_name, doc_data in log_data.items():
+                            st.markdown(f"### 📄 {doc_name}")
+                            
+                            if "latest_state" in doc_data:
+                                st.markdown("#### État final")
+                                latest = doc_data["latest_state"]
+                                for key, value in latest.items():
+                                    if key != "last_updated":
+                                        st.markdown(f"**{key}:** {value}")
+                            
+                            if "history" in doc_data:
+                                st.markdown("#### Historique des corrections")
+                                for corr in doc_data["history"]:
+                                    st.markdown(
+                                        f"- {corr['entity_type']}: "
+                                        f"{corr['original_value']} → "
+                                        f"{corr['corrected_value']} "
+                                        f"({corr['timestamp']})"
+                                    )
+                            
+                            st.markdown("---")
+                    
+                    # Add download button for this log
+                    col1, col2 = st.columns([4, 1])
+                    with col2:
+                        log_content = json.dumps(log_data, ensure_ascii=False, indent=2)
+                        b64 = base64.b64encode(log_content.encode()).decode()
+                        href = f'<a href="data:application/json;base64,{b64}" download="{log_file.name}" class="download-button">📥 Télécharger ce log</a>'
+                        st.markdown(href, unsafe_allow_html=True)
+                    
+                except Exception as e:
+                    st.error(f"Erreur lors de la lecture du log: {str(e)}")
+
     def show_success(self, message: str):
         """Show success message"""
         st.success(message)

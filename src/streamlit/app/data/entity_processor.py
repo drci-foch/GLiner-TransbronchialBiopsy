@@ -39,7 +39,7 @@ class EntityProcessor:
         self,
         entities: List[Dict],
         filename: str,
-        conclusion_text: str  # Add this parameter
+        conclusion_text: str
     ) -> Dict[str, Any]:
         """
         Process and structure entity data.
@@ -57,7 +57,7 @@ class EntityProcessor:
             structured_data = {
                 'Nom_Document': filename,
                 'Date_Structuration': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                'Conclusion': conclusion_text  # Add the conclusion text
+                'Conclusion': conclusion_text  # Add conclusion to structured data
             }
             
             # Initialize collections

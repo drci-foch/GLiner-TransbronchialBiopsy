@@ -86,6 +86,17 @@ class MedicalAnnotationDashboard:
             new_password = st.text_input("Nouveau mot de passe", type="password")
             confirm_password = st.text_input("Confirmer le mot de passe", type="password")
             
+            st.info("""
+            ### Critères de sécurité pour le mot de passe :
+            
+            - **Au moins 8 caractères**
+            - **Contient au moins une lettre majuscule**
+            - **Contient au moins une lettre minuscule**
+            - **Contient au moins un chiffre**
+            - **Contient au moins un caractère spécial**
+            
+            Ces règles aident à garantir la sécurité de votre compte.
+            """)
             if st.button("S'inscrire"):
                 if new_password != confirm_password:
                     st.error("Les mots de passe ne correspondent pas")

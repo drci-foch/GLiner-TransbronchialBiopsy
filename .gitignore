@@ -7,7 +7,7 @@ __pycache__/
 *.so
 *.json
 *.xlsx
-models/
+lock_models/
 # Distribution / packaging
 .Python
 build/

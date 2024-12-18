@@ -71,7 +71,7 @@ trainer.train(config)
 ### Interactive Dashboard
 
 ```bash
-streamlit run dashboard.py --server.port 8501
+streamlit run app.py --server.port 8501
 ```
 
 ## 🔄 Development Workflow

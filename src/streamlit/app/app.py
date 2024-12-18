@@ -8,6 +8,7 @@ from data.corrections_manager import CorrectionsManager
 from visualization.charts import ChartGenerator
 from ui.components import UIComponents
 from ui.styles import Styles
+from auth.user_auth import UserAuth
 from typing import Dict, List, Optional, Any
 import pandas as pd
 from datetime import datetime
@@ -26,24 +27,17 @@ class MedicalAnnotationDashboard:
     
     def __init__(self):
         """Initialize the dashboard application"""
-        # Load configuration
         self.config = Config()
+        self.user_auth = UserAuth()
         
-        # Create logs directory if it doesn't exist
-        logs_dir = Path("correction_logs")
-        logs_dir.mkdir(exist_ok=True)
-        
-        # Initialize components
-        self.model_handler = ModelHandler()
-        self.text_processor = TextProcessor()
-        self.file_handler = FileHandler()
-        self.entity_processor = EntityProcessor()
-        self.corrections_manager = CorrectionsManager(base_log_dir="correction_logs")
-        self.chart_generator = ChartGenerator()
-        self.ui = UIComponents()
-        
-        # Initialize session state
-        self._initialize_session_state()
+        # Only initialize other components after user login
+        self.model_handler = None
+        self.text_processor = None
+        self.file_handler = None
+        self.entity_processor = None
+        self.corrections_manager = None
+        self.chart_generator = None
+        self.ui = None
     
     def _initialize_session_state(self):
         """Initialize Streamlit session state variables"""
@@ -53,6 +47,52 @@ class MedicalAnnotationDashboard:
             st.session_state.results_df = None
         if 'corrections' not in st.session_state:
             st.session_state.corrections = {}
+
+    def initialize_components(self):
+        """Initialize components after user login"""
+        if not self.model_handler:
+            self.model_handler = ModelHandler()
+            self.text_processor = TextProcessor()
+            self.file_handler = FileHandler()
+            self.entity_processor = EntityProcessor()
+            self.corrections_manager = CorrectionsManager()
+            self.chart_generator = ChartGenerator()
+            self.ui = UIComponents()
+            
+            # Set user for corrections manager
+            user = self.user_auth.get_current_user()
+            if user:
+                self.corrections_manager.set_user(user)
+
+    def show_login(self):
+        """Show login interface"""
+        st.title("🏥 FochAnnot : Connexion")
+        
+        tab1, tab2 = st.tabs(["Connexion", "Inscription"])
+        
+        with tab1:
+            username = st.text_input("Nom d'utilisateur")
+            password = st.text_input("Mot de passe", type="password")
+            
+            if st.button("Se connecter"):
+                if self.user_auth.login(username, password):
+                    st.success("Connexion réussie!")
+                    st.rerun()
+                else:
+                    st.error("Nom d'utilisateur ou mot de passe incorrect")
+        
+        with tab2:
+            new_username = st.text_input("Nouveau nom d'utilisateur")
+            new_password = st.text_input("Nouveau mot de passe", type="password")
+            confirm_password = st.text_input("Confirmer le mot de passe", type="password")
+            
+            if st.button("S'inscrire"):
+                if new_password != confirm_password:
+                    st.error("Les mots de passe ne correspondent pas")
+                elif self.user_auth.register(new_username, new_password):
+                    st.success("Inscription réussie! Vous pouvez maintenant vous connecter.")
+                else:
+                    st.error("Nom d'utilisateur déjà utilisé")
     
     def process_file(self, uploaded_file) -> bool:
         """
@@ -184,12 +224,30 @@ class MedicalAnnotationDashboard:
     def run(self):
         """Run the main application"""
         try:
-            # Set page config
+            # Initialize session state variables
+            self._initialize_session_state()
+            
+            # Set page config (only once, at the very beginning)
             st.set_page_config(
                 page_title="FochAnnot - Analyse Documents",
                 page_icon="🏥",
                 layout="wide"
             )
+            
+            # Check if user is logged in
+            if not self.user_auth.get_current_user():
+                self.show_login()
+                return
+            
+            # Initialize components after login
+            self.initialize_components()
+            
+            # Show logout button in sidebar
+            with st.sidebar:
+                st.markdown(f"**Utilisateur:** {self.user_auth.get_current_user()}")
+                if st.button("Se déconnecter"):
+                    self.user_auth.logout()
+                    st.rerun()
             
             # Apply styles
             Styles.apply_all_styles()
@@ -295,7 +353,7 @@ class MedicalAnnotationDashboard:
                 # Add session history viewer
                 st.markdown("---")
                 self.ui.create_logs_viewer()
-                
+            
         except Exception as e:
             logger.error(f"Application error: {str(e)}")
             self.ui.show_error("Une erreur est survenue dans l'application")

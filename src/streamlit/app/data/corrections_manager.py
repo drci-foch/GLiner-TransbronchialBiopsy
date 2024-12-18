@@ -14,21 +14,37 @@ logger = logging.getLogger(__name__)
 
 class CorrectionsManager:
     def __init__(self, base_log_dir: str = "correction_logs"):
-        """
-        Initialize corrections manager with dynamic log file creation.
-        
-        Args:
-            base_log_dir: Base directory for storing correction logs
-        """
+        """Initialize corrections manager"""
         self.base_log_dir = Path(base_log_dir)
         self.base_log_dir.mkdir(exist_ok=True)
+        self.corrections = {}
+        
+        # Will be set when user logs in
+        self.current_user = None
+        self.session_id = None
+        self.corrections_file = None
+
+    def set_user(self, username: str):
+        """Set current user and initialize their log file"""
+        self.current_user = username
+        
+        # Create user directory
+        user_dir = self.base_log_dir / username
+        user_dir.mkdir(exist_ok=True)
         
         # Create new session log file
         self.session_id = datetime.now().strftime('%Y%m%d_%H%M%S')
-        self.corrections_file = self.base_log_dir / f"corrections_log_{self.session_id}.json"
+        self.corrections_file = user_dir / f"corrections_log_{self.session_id}.json"
         
-        # Initialize corrections dictionary
+        # Load existing corrections
         self.corrections = {}
+    
+    def get_user_logs(self, username: str) -> List[Path]:
+        """Get all log files for a user"""
+        user_dir = self.base_log_dir / username
+        if user_dir.exists():
+            return sorted(user_dir.glob("*.json"), reverse=True)
+        return []
     
     def add_correction(
         self,

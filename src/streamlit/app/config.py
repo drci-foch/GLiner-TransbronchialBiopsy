@@ -7,7 +7,7 @@ from datetime import datetime
 @dataclass
 class ModelConfig:
     """Model-related configuration settings"""
-    MODEL_PATH: str = "../../finetuning/models/kfold_run/fold_3/checkpoint-1000"
+    MODEL_PATH: str = "../../finetuning/lock_models/kfold_run/fold_3/checkpoint-1000"
     DEFAULT_CONFIDENCE_THRESHOLD: float = 0.5
     MAX_SEQUENCE_LENGTH: int = 512
     BATCH_SIZE: int = 32

@@ -38,7 +38,8 @@ class EntityProcessor:
     def process_entities(
         self,
         entities: List[Dict],
-        filename: str
+        filename: str,
+        conclusion_text: str  # Add this parameter
     ) -> Dict[str, Any]:
         """
         Process and structure entity data.
@@ -46,7 +47,8 @@ class EntityProcessor:
         Args:
             entities (List[Dict]): List of entity predictions
             filename (str): Source document filename
-        
+            conclusion_text (str): Extracted conclusion text
+            
         Returns:
             Dict[str, Any]: Structured entity data
         """
@@ -54,7 +56,8 @@ class EntityProcessor:
             # Initialize structured data
             structured_data = {
                 'Nom_Document': filename,
-                'Date_Structuration': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                'Date_Structuration': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                'Conclusion': conclusion_text  # Add the conclusion text
             }
             
             # Initialize collections
@@ -69,19 +72,15 @@ class EntityProcessor:
             
             # Create final structure
             for label in self.labels:
-                # Join multiple entities with semicolons
                 structured_data[label] = (
                     ';'.join(collected_entities[label]) if collected_entities[label] else None
                 )
-                
-                # Store scores in compact format
-                if collected_scores[label]:
-                    structured_data.setdefault('Scores', {})
-                    structured_data['Scores'][label] = collected_scores[label]
             
-            # Convert scores to string representation
-            if 'Scores' in structured_data:
-                structured_data['Scores'] = str(structured_data['Scores'])
+            # Add scores
+            if any(collected_scores.values()):
+                structured_data['Scores'] = str(
+                    {k: v for k, v in collected_scores.items() if v}
+                )
             
             return structured_data
             

@@ -114,7 +114,7 @@ class UIComponents:
     ):
         """Create data display tab"""
         # Configure column display order
-        column_order = ['Nom_Document', 'Date_Structuration']
+        column_order = ['Nom_Document', 'Date_Structuration', 'Conclusion']  # Add Conclusion
         column_order.extend(self.config.LABELS)
         column_order.append('Scores')
         
@@ -133,6 +133,11 @@ class UIComponents:
                     format="DD/MM/YYYY HH:mm",
                     width="medium",
                 ),
+                "Conclusion": st.column_config.TextColumn(
+                    "Conclusion",
+                    help="Texte de la conclusion extraite",
+                    width="large",
+                ),
                 "Scores": st.column_config.Column(
                     "Scores de confiance",
                     help="Scores de confiance pour chaque entité détectée",
@@ -142,12 +147,6 @@ class UIComponents:
             },
             hide_index=True,
         )
-        
-        # Add view buttons for each file
-        for idx, row in results_df.iterrows():
-            filename = row['Nom_Document']
-            if st.button(f"📄 Voir {filename}", key=f"view_{filename}"):
-                on_file_view(filename)
     
     def _create_stats_tab(
         self,

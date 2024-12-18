@@ -1,7 +1,6 @@
 import os
 from pathlib import Path
 import pdfplumber
-import fitz  # PyMuPDF
 from PIL import Image
 import pytesseract
 from typing import Optional, Tuple, Dict, List, BinaryIO, Union
@@ -180,24 +179,9 @@ class FileHandler:
         Returns:
             Optional[str]: Extracted text
         """
-        text = None
-        
         try:
-            # Try pdfplumber first
             with pdfplumber.open(BytesIO(content)) as pdf:
                 text = "\n".join(page.extract_text() or "" for page in pdf.pages)
-            
-            # If no text found, try PyMuPDF
-            if not text or not text.strip():
-                doc = fitz.open(stream=content, filetype="pdf")
-                text = ""
-                for page in doc:
-                    text += page.get_text()
-                doc.close()
-            
-            # If still no text, try OCR
-            if not text or not text.strip():
-                text = self._extract_text_with_ocr(content)
             
             return text.strip() if text else None
             
@@ -223,41 +207,6 @@ class FileHandler:
         
         # If all encodings fail, try with 'replace' error handler
         return content.decode('utf-8', errors='replace')
-    
-    def _extract_text_with_ocr(self, content: bytes) -> Optional[str]:
-        """
-        Extract text using OCR.
-        
-        Args:
-            content: File content
-            
-        Returns:
-            Optional[str]: Extracted text
-        """
-        try:
-            # Convert PDF to images
-            doc = fitz.open(stream=content, filetype="pdf")
-            text = ""
-            
-            for page_num in range(len(doc)):
-                page = doc.load_page(page_num)
-                pix = page.get_pixmap()
-                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                
-                # Perform OCR
-                page_text = pytesseract.image_to_string(
-                    img,
-                    lang='fra',
-                    config='--psm 1 --oem 3'
-                )
-                text += page_text + "\n"
-            
-            doc.close()
-            return text if text.strip() else None
-            
-        except Exception as e:
-            logger.error(f"Error in OCR: {str(e)}")
-            return None
     
     def get_file_info(self, file_path: Path) -> Dict:
         """

@@ -1,3 +1,4 @@
+# text_processor.py
 import re
 from typing import Optional, List, Dict, Tuple
 import logging
@@ -7,12 +8,9 @@ from io import BytesIO
 import pytesseract
 from PIL import Image
 import numpy as np
-import pandas as pd
+import unicodedata
 from datetime import datetime
 from config import config
-import unicodedata
-import fitz  # PyMuPDF
-import traceback
 
 # Set up logging
 logging.basicConfig(
@@ -27,7 +25,73 @@ class TextProcessor:
     def __init__(self):
         """Initialize text processor with configuration settings"""
         self.config = config.TEXT_PROCESSING
-        self.last_processed = {}  # Cache for processed texts
+    
+    def _extract_text_from_pdf(self, content: bytes) -> Optional[str]:
+        """
+        Extract text from PDF content using pdfplumber.
+        
+        Args:
+            content: PDF content
+            
+        Returns:
+            Optional[str]: Extracted text
+        """
+        try:
+            with pdfplumber.open(BytesIO(content)) as pdf:
+                text = "\n".join(
+                    page.extract_text() or "" 
+                    for page in pdf.pages
+                )
+                return text.strip() if text else None
+                
+        except Exception as e:
+            logger.error(f"Error extracting PDF text: {str(e)}")
+            return None
+    
+    def _extract_text_from_txt(self, content: bytes) -> Optional[str]:
+        """
+        Extract text from TXT content.
+        
+        Args:
+            content: TXT content
+            
+        Returns:
+            Optional[str]: Extracted text
+        """
+        for encoding in self.config["ENCODING_ATTEMPTS"]:
+            try:
+                return content.decode(encoding)
+            except UnicodeDecodeError:
+                continue
+        
+        # If all encodings fail, try with 'replace' error handler
+        return content.decode('utf-8', errors='replace')
+    
+    def extract_text(
+        self,
+        file_content: bytes,
+        file_type: str
+    ) -> Optional[str]:
+        """
+        Extract text from file content.
+        
+        Args:
+            file_content: File content as bytes
+            file_type: Type of file
+            
+        Returns:
+            Optional[str]: Extracted text
+        """
+        try:
+            if file_type == 'pdf':
+                return self._extract_text_from_pdf(file_content)
+            elif file_type == 'txt':
+                return self._extract_text_from_txt(file_content)
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error extracting text: {str(e)}")
+            return None
     
     def clean_text(self, text: str) -> str:
         """
@@ -50,7 +114,11 @@ class TextProcessor:
             text = re.sub(r'\s+', ' ', text)
             
             # Remove special characters while keeping French accents
-            text = re.sub(r'[^\w\s\u00C0-\u017FàâäéèêëîïôöùûüÿçÀÂÄÉÈÊËÎÏÔÖÙÛÜŸÇ.,;:()[\]{}"\'-]', '', text)
+            text = re.sub(
+                r'[^\w\s\u00C0-\u017FàâäéèêëîïôöùûüÿçÀÂÄÉÈÊËÎÏÔÖÙÛÜŸÇ.,;:()[\]{}"\'-]',
+                '',
+                text
+            )
             
             # Normalize whitespace around punctuation
             text = re.sub(r'\s*([.,;:!?])\s*', r'\1 ', text)
@@ -61,38 +129,11 @@ class TextProcessor:
             # Normalize dashes
             text = re.sub(r'[-‐‑‒–—―]+', '-', text)
             
-            # Fix common OCR errors
-            text = self._fix_ocr_errors(text)
-            
             return text.strip()
             
         except Exception as e:
             logger.error(f"Error in clean_text: {str(e)}")
             return text
-    
-    def _fix_ocr_errors(self, text: str) -> str:
-        """
-        Fix common OCR errors in text.
-        
-        Args:
-            text (str): Text with potential OCR errors
-            
-        Returns:
-            str: Text with corrected OCR errors
-        """
-        # Common OCR error corrections
-        corrections = {
-            r'([A-Za-z])0': r'\1O',  # Replace 0 with O when after a letter
-            r'1l': 'Il',  # Replace 1l with Il
-            r'\bI([^a-zA-Z])': r'1\1',  # Replace I with 1 when followed by non-letter
-            r'rn': 'm',  # Replace 'rn' with 'm'
-            r'([0-9])l': r'\1I',  # Replace l with I when after a number
-        }
-        
-        for pattern, replacement in corrections.items():
-            text = re.sub(pattern, replacement, text)
-        
-        return text
     
     def extract_conclusion(self, text: str) -> Optional[str]:
         """
@@ -102,7 +143,7 @@ class TextProcessor:
             text (str): Full document text
             
         Returns:
-            Optional[str]: Extracted conclusion section or None if not found
+            Optional[str]: Extracted conclusion section
         """
         try:
             # Clean and normalize text first
@@ -196,161 +237,3 @@ class TextProcessor:
             text = re.sub(pattern, replacement, text)
         
         return text
-    
-    def extract_text_from_file(self, file_content: bytes, file_type: str) -> Optional[str]:
-        """
-        Extract text from uploaded file.
-        
-        Args:
-            file_content (bytes): File content
-            file_type (str): File type (pdf or txt)
-            
-        Returns:
-            Optional[str]: Extracted text or None if extraction fails
-        """
-        try:
-            if file_type == "pdf":
-                return self._extract_text_from_pdf(file_content)
-            elif file_type == "txt":
-                return self._extract_text_from_txt(file_content)
-            else:
-                logger.error(f"Unsupported file type: {file_type}")
-                return None
-                
-        except Exception as e:
-            logger.error(f"Error extracting text from {file_type} file: {str(e)}")
-            return None
-    
-    def _extract_text_from_pdf(self, file_content: bytes) -> Optional[str]:
-        """
-        Extract text from PDF file.
-        
-        Args:
-            file_content (bytes): PDF file content
-            
-        Returns:
-            Optional[str]: Extracted text or None if extraction fails
-        """
-        try:
-            # Try pdfplumber first
-            with pdfplumber.open(BytesIO(file_content)) as pdf:
-                text = "\n".join(page.extract_text() for page in pdf.pages)
-                
-                if text.strip():
-                    return text
-            
-            # If pdfplumber fails or returns empty text, try PyMuPDF
-            doc = fitz.open(stream=file_content, filetype="pdf")
-            text = ""
-            for page in doc:
-                text += page.get_text()
-            doc.close()
-            
-            if text.strip():
-                return text
-            
-            # If both fail, try OCR
-            return self._extract_text_with_ocr(file_content)
-            
-        except Exception as e:
-            logger.error(f"Error in PDF text extraction: {str(e)}")
-            return None
-    
-    def _extract_text_from_txt(self, file_content: bytes) -> Optional[str]:
-        """
-        Extract text from TXT file.
-        
-        Args:
-            file_content (bytes): TXT file content
-            
-        Returns:
-            Optional[str]: Extracted text or None if extraction fails
-        """
-        for encoding in self.config["ENCODING_ATTEMPTS"]:
-            try:
-                return file_content.decode(encoding)
-            except UnicodeDecodeError:
-                continue
-        
-        # If all encodings fail, try with 'replace' error handler
-        return file_content.decode('utf-8', errors='replace')
-    
-    def _extract_text_with_ocr(self, file_content: bytes) -> Optional[str]:
-        """
-        Extract text using OCR when other methods fail.
-        
-        Args:
-            file_content (bytes): File content
-            
-        Returns:
-            Optional[str]: Extracted text or None if extraction fails
-        """
-        try:
-            # Convert PDF to images
-            doc = fitz.open(stream=file_content, filetype="pdf")
-            text = ""
-            
-            for page_num in range(len(doc)):
-                page = doc.load_page(page_num)
-                pix = page.get_pixmap()
-                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                
-                # Perform OCR
-                page_text = pytesseract.image_to_string(
-                    img,
-                    lang='fra',
-                    config='--psm 1 --oem 3'
-                )
-                text += page_text + "\n"
-            
-            doc.close()
-            return text if text.strip() else None
-            
-        except Exception as e:
-            logger.error(f"Error in OCR text extraction: {str(e)}")
-            return None
-    
-    def validate_text(self, text: str) -> Tuple[bool, Optional[str]]:
-        """
-        Validate extracted text.
-        
-        Args:
-            text (str): Text to validate
-            
-        Returns:
-            Tuple[bool, Optional[str]]: (is_valid, error_message)
-        """
-        if not text:
-            return False, "Text is empty"
-        
-        if len(text) < self.config["MIN_CONCLUSION_LENGTH"]:
-            return False, f"Text is too short (minimum {self.config['MIN_CONCLUSION_LENGTH']} characters)"
-        
-        if len(text) > self.config["MAX_TEXT_LENGTH"]:
-            return False, f"Text is too long (maximum {self.config['MAX_TEXT_LENGTH']} characters)"
-        
-        return True, None
-    
-    def get_text_statistics(self, text: str) -> Dict:
-        """
-        Get statistics about the text.
-        
-        Args:
-            text (str): Input text
-            
-        Returns:
-            Dict: Text statistics
-        """
-        if not text:
-            return {}
-        
-        words = text.split()
-        sentences = re.split(r'[.!?]+', text)
-        
-        return {
-            "character_count": len(text),
-            "word_count": len(words),
-            "sentence_count": len(sentences),
-            "average_word_length": np.mean([len(word) for word in words]),
-            "average_sentence_length": np.mean([len(sent.split()) for sent in sentences if sent.strip()])
-        }

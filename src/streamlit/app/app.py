@@ -15,6 +15,7 @@ from datetime import datetime
 import logging
 from pathlib import Path
 
+
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
@@ -29,6 +30,7 @@ class MedicalAnnotationDashboard:
         """Initialize the dashboard application"""
         self.config = Config()
         self.user_auth = UserAuth()
+ 
         
         # Only initialize other components after user login
         self.model_handler = None
@@ -66,7 +68,7 @@ class MedicalAnnotationDashboard:
 
     def show_login(self):
         """Show login interface"""
-        st.title("🏥 FochAnnot : Connexion")
+        st.title("FochAnnot : Connexion")
         
         tab1, tab2 = st.tabs(["Connexion", "Inscription"])
         
@@ -232,19 +234,19 @@ class MedicalAnnotationDashboard:
             )
         return {}
     
+
     def run(self):
         """Run the main application"""
         try:
             # Initialize session state variables
             self._initialize_session_state()
             
-            # Set page config (only once, at the very beginning)
             st.set_page_config(
-                page_title="FochAnnot - Analyse Documents",
+                page_title="FochAnnot",
                 page_icon="🏥",
                 layout="wide"
             )
-            
+
             # Check if user is logged in
             if not self.user_auth.get_current_user():
                 self.show_login()

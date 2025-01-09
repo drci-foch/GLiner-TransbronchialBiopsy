@@ -232,7 +232,7 @@ class ModelHandler:
             "last_used": self._last_used.isoformat() if self._last_used else None,
             "cache_size": len(self._cache),
             "labels": config.LABELS,
-            "device": "cuda" if torch.cuda.is_available() else "cpu",
+            "device": "cpu", #"cuda" if torch.cuda.is_available() else "cpu",
             "max_sequence_length": config.model.MAX_SEQUENCE_LENGTH
         }
     

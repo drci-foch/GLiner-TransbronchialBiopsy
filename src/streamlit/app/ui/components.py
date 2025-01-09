@@ -19,7 +19,7 @@ class UIComponents:
         
     def create_header(self):
         """Create application header"""
-        st.title("🏥 FochAnnot : Analyse de Documents")
+        st.title("FochAnnot : Analyse de Documents")
         
         with st.expander("📖 Instructions d'utilisation", expanded=False):
             st.markdown("""

@@ -17,14 +17,14 @@ class Styles:
                 svg_content = f.read()
             logo_html = f'''
                 <div style="text-align: center; padding: 1rem;">
-                    <div style="width: 250px; margin: 0 auto;">
+                    <div style="width: 400; margin: 0 auto;">
                         {svg_content}
             '''
             return logo_html
         except FileNotFoundError:
             return """
                 <div style="text-align: center; padding: 1rem;">
-                    <h1 style="color: #00487E;">FochAnnot</h1>
+                    <h1 style="color: #00487E;"> FochAnnot : Structuration automatique de documents </h1>
                 </div>
             """
 
@@ -422,7 +422,8 @@ class Styles:
     @classmethod
     def apply_all_styles(cls):
         """Apply all styles and show header"""
-        cls.show_header()  # Show header with logo
+        cls.apply_fixed_header()  # Add this line
+        cls.show_header()
         cls.apply_base_styles()
         cls.apply_custom_theme()
         cls.apply_fonts()
@@ -551,6 +552,102 @@ class Styles:
                 "font": "sans-serif"
             }
         }
+    
+
+    @staticmethod
+    def apply_fixed_header():
+        """Apply fixed header bar styles"""
+        st.markdown("""
+            <style>
+            /* Fixed header bar - increased z-index and adjusted stacking context */
+            .fixed-header {
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                height: 70px;
+                background: linear-gradient(90deg, #00487E, #0079C0);
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 0 2rem;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                z-index: 999999 !important;  /* Increased z-index */
+            }
+            
+            /* Adjust sidebar to stay below header */
+            section[data-testid="stSidebar"] {
+                position: relative;
+                z-index: 99999 !important;
+                margin-top: 70px !important;
+                height: calc(100vh - 70px) !important;
+            }
+            
+            /* Adjust the sidebar's internal elements */
+            section[data-testid="stSidebar"] > div {
+                height: calc(100vh - 70px);
+            }
+            
+            /* Ensure main content stays below header */
+            .main .block-container {
+                padding-top: 90px !important;
+                margin-top: 0px;
+            }
+            
+            /* Logo in fixed header */
+            .fixed-header-logo {
+                display: flex;
+                align-items: center;
+                gap: 1rem;
+            }
+            
+            .fixed-header-logo img {
+                height: 40px;
+                width: auto;
+            }
+            
+            .fixed-header-title {
+                color: white;
+                font-size: 1.5rem;
+                font-weight: 600;
+            }
+            
+            /* User info in header */
+            .fixed-header-user {
+                display: flex;
+                align-items: center;
+                gap: 1rem;
+                color: white;
+            }
+            
+            .user-avatar {
+                width: 50px;
+                height: 50px;
+                background: rgba(255, 255, 255, 0.2);
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            
+            /* Responsive adjustments */
+            @media (max-width: 768px) {
+                .fixed-header {
+                    padding: 0 1rem;
+                }
+                
+                .fixed-header-title {
+                    font-size: 1.2rem;
+                }
+                
+                .user-info {
+                    display: none;
+                }
+            }
+            </style>
+        """, unsafe_allow_html=True)
+
+
 
 def create_config_toml():
     """Create .streamlit/config.toml file with theme settings"""

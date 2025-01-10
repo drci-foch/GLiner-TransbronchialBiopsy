@@ -8,7 +8,7 @@ import base64
 import json
 from config import config
 from io import BytesIO  
-
+from auth.user_auth import UserAuth
 
 class UIComponents:
     """Manages all UI components for the application"""
@@ -16,11 +16,10 @@ class UIComponents:
     def __init__(self):
         """Initialize UI components"""
         self.config = config
-        
+        self.user_auth = UserAuth()
+
     def create_header(self):
         """Create application header"""
-        st.title("FochAnnot : Analyse de Documents")
-        
         with st.expander("📖 Instructions d'utilisation", expanded=False):
             st.markdown("""
                 ### Comment utiliser FochAnnot :
@@ -31,10 +30,9 @@ class UIComponents:
                 5. **Export** : Téléchargez les résultats et l'historique des corrections
             """)
     
-    def create_sidebar(
-        self,
-        on_clear_results: Callable
-    ):
+
+    
+    def create_sidebar(self, on_clear_results: Callable):
         """
         Create sidebar with controls.
         
@@ -42,37 +40,97 @@ class UIComponents:
             on_clear_results: Callback for clearing results
         """
         with st.sidebar:
-            st.header("Configuration")
+            if st.button("Se déconnecter"):
+                self.user_auth.logout()
+                st.rerun()
+
+
+            st.header("📈 Informations")
             
-            threshold = st.slider(
-                "Seuil de confiance",
-                min_value=0.0,
-                max_value=1.0,
-                value=0.5,
-                step=0.05,
-                help="Ajustez le seuil de confiance pour la détection des entités"
-            )
-            
-            if 'results_df' in st.session_state and st.session_state.results_df is not None:
-                st.markdown("### Actions")
-                if st.button("🗑️ Effacer tous les résultats"):
+            # Add file statistics - check if state exists and is updated
+            if ('results_df' in st.session_state and 
+                st.session_state.results_df is not None and 
+                'processed_files' in st.session_state):
+                
+                # Main statistics - will update when processed_files changes
+                total_files = len(st.session_state.processed_files)
+                
+                # Add statistics about conclusions
+                if 'Conclusion' in st.session_state.results_df:
+                    # Recalculate stats based on current state
+                    docs_avec_conclusion = st.session_state.results_df['Conclusion'].notna().sum()
+                    taux_conclusion = (docs_avec_conclusion / total_files) * 100 if total_files > 0 else 0
+                    st.metric(label="Documents avec conclusion", value=f"{docs_avec_conclusion}/{total_files}")
+                    st.progress(taux_conclusion/100, f"{taux_conclusion:.1f}%")
+
+                # Label statistics with automatic updates
+                if self.config.LABELS and not st.session_state.results_df.empty:
+                    st.markdown("---")
+                    st.markdown("### 🏷️ Étiquettes détectées")
+                    for i in range(0, len(self.config.LABELS), 2):
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            if i < len(self.config.LABELS):
+                                label = self.config.LABELS[i]
+                                if label in st.session_state.results_df:
+                                    label_count = st.session_state.results_df[label].notna().sum()
+                                    label_taux = (label_count / total_files) * 100 if total_files > 0 else 0
+                                    st.metric(label=label, value=f"{label_count}/{total_files}")
+                                    st.progress(label_taux/100, f"{label_taux:.1f}%")
+                        
+                        with col2:
+                            if i + 1 < len(self.config.LABELS):
+                                label = self.config.LABELS[i + 1]
+                                if label in st.session_state.results_df:
+                                    label_count = st.session_state.results_df[label].notna().sum()
+                                    label_taux = (label_count / total_files) * 100 if total_files > 0 else 0
+                                    st.metric(label=label, value=f"{label_count}/{total_files}")
+                                    st.progress(label_taux/100, f"{label_taux:.1f}%")
+                
+                # Actions - always available when there are files
+                st.markdown("---")
+                st.markdown("### 🗑️ Actions")
+
+                if st.button("🗑️ Ré-initialiser les résultats", key="clear_button"):
                     on_clear_results()
+                    st.experimental_rerun()
+
             
-            return threshold
-    
-    def create_file_uploader(self) -> List[Any]:
+            # Version info
+            st.markdown("---")
+            st.markdown("### ℹ️ À propos")
+            st.markdown("Version: BTB_structuration_1.0.0")
+            st.markdown("Author: Sarra Ben Yahia")
+        
+    def create_file_uploader(self, on_clear_results: Callable) -> List[Any]:
         """
-        Create file upload section.
+        Create file upload section with delete all button.
         
         Returns:
             List[Any]: List of uploaded files
         """
-        return st.file_uploader(
+        # Initialize the key for file uploader
+        if 'uploader_key' not in st.session_state:
+            st.session_state.uploader_key = 0
+
+        uploaded_files = st.file_uploader(
             "Choisissez un ou plusieurs fichiers (PDF ou TXT)",
             type=["pdf", "txt"],
             accept_multiple_files=True,
-            help="Glissez-déposez vos fichiers ou cliquez pour les sélectionner"
+            help="Glissez-déposez vos fichiers ou cliquez pour les sélectionner",
+            key=f"uploader_{st.session_state.uploader_key}"
         )
+
+        return uploaded_files
+
+    # And in your clear function:
+    def _clear_results(self):
+        """Clear all results and session state"""
+        st.session_state.results_df = None
+        st.session_state.processed_files = {}
+        # Increment the key to force file uploader reset
+        st.session_state.uploader_key += 1
     
     def create_results_tabs(
         self,
@@ -392,28 +450,101 @@ class UIComponents:
 
     def create_download_buttons(self, results_df: pd.DataFrame):
         """Create download buttons for results"""
-        st.markdown("### Export des résultats")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            csv = results_df.to_csv(index=False)
-            b64_csv = base64.b64encode(csv.encode()).decode()
-            filename_csv = f"resultats_analyse_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-            href_csv = f'<a href="data:file/csv;base64,{b64_csv}" download="{filename_csv}" class="download-button">📥 Télécharger (CSV)</a>'
-            st.markdown(href_csv, unsafe_allow_html=True)
-        
-        with col2:
-            # Create Excel file in memory
-            output = BytesIO()
-            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                results_df.to_excel(writer, index=False, sheet_name='Résultats')
-            
-            b64_excel = base64.b64encode(output.getvalue()).decode()
-            filename_excel = f"resultats_analyse_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-            href_excel = f'<a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64_excel}" download="{filename_excel}" class="download-button">📥 Télécharger (Excel)</a>'
-            st.markdown(href_excel, unsafe_allow_html=True)
-    
+        st.markdown("""
+            <style>
+            .download-section {
+                background: linear-gradient(90deg, #00487E, #0079C0);
+                padding: 25px;
+                border-radius: 10px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                margin: 20px 0;
+                color: white;
+            }
+            .download-button-container {
+                display: flex;
+                gap: 20px;
+                align-items: center;
+                margin-top: 20px;
+                padding: 15px;
+                background: rgba(255, 255, 255, 0.1);
+                border-radius: 8px;
+            }
+            .download-button-custom {
+                background: white;
+                color: #00487E;
+                padding: 12px 24px;
+                border-radius: 8px;
+                text-decoration: none;
+                display: inline-block;
+                width: 100%;
+                text-align: center;
+                transition: transform 0.2s, box-shadow 0.2s;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+                font-weight: 500;
+            }
+            .download-button-custom:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+                background: #f8f9fa;
+                text-decoration: none;
+                color: #00487E;
+            }
+            .file-info {
+                color: rgba(255, 255, 255, 0.9);
+                font-size: 0.9em;
+                margin-top: 5px;
+                text-align: center;
+            }
+            </style>
+        """, unsafe_allow_html=True)
+
+        # CSV and Excel data preparation
+        # CSV
+        csv = results_df.to_csv(index=False)
+        csv_size = len(csv.encode('utf-8')) / 1024  # Size in KB
+        b64_csv = base64.b64encode(csv.encode()).decode()
+        filename_csv = f"resultats_analyse_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+
+        # Excel
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            results_df.to_excel(writer, index=False, sheet_name='Résultats')
+        excel_data = output.getvalue()
+        excel_size = len(excel_data) / 1024  # Size in KB
+        b64_excel = base64.b64encode(excel_data).decode()
+        filename_excel = f"resultats_analyse_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+
+        # Create the complete HTML structure
+        download_html = f"""
+            <div class="download-section">
+                <h3>📥 Export des résultats</h3>
+                <div class="download-button-container">
+                    <div style="flex: 1; text-align: center;">
+                        <a href="data:file/csv;base64,{b64_csv}" 
+                        download="{filename_csv}" 
+                        class="download-button-custom">
+                            <span>📊 Format CSV</span>
+                        </a>
+                        <div class="file-info">
+                            Taille: {csv_size:.1f} KB
+                        </div>
+                    </div>
+                    <div style="flex: 1; text-align: center;">
+                        <a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64_excel}" 
+                        download="{filename_excel}" 
+                        class="download-button-custom">
+                            <span>📈 Format Excel</span>
+                        </a>
+                        <div class="file-info">
+                            Taille: {excel_size:.1f} KB
+                        </div>
+                    </div>
+                </div>
+            </div>
+        """
+
+        st.markdown(download_html, unsafe_allow_html=True)
+
     def create_file_viewer(self, file_content: bytes, filename: str):
         """Create file viewer dialog"""
         with st.expander(f"📄 {filename}", expanded=True):
@@ -513,6 +644,8 @@ class UIComponents:
                     
                 except Exception as e:
                     st.error(f"Erreur lors de la lecture du log: {str(e)}")
+
+
 
     def show_success(self, message: str):
         """Show success message"""

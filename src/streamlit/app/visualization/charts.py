@@ -67,59 +67,78 @@ class ChartGenerator:
         except Exception as e:
             logger.error(f"Error creating entity distribution chart: {str(e)}")
             raise
-    
+        
     def create_confidence_heatmap(
-        self,
-        data: pd.DataFrame,
-        entity_scores: Dict[str, List[float]]
-    ) -> go.Figure:
+            self,
+            data: pd.DataFrame,
+            entity_scores: Dict[str, List[float]]
+        ) -> go.Figure:
         """
         Create heatmap of entity confidence scores.
         
         Args:
-            data (pd.DataFrame): Entity data
+            data (pd.DataFrame): Entity data with 'Scores' column containing dictionaries
             entity_scores (Dict[str, List[float]]): Confidence scores
             
         Returns:
             go.Figure: Plotly figure object
         """
         try:
-            # Prepare data for heatmap
-            documents = data['Nom_Document'].unique()
-            score_matrix = []
+            # Convert string representation to dictionary if needed
+            scores_data = []
+            for score in data['Scores']:
+                if isinstance(score, str):
+                    # If the score is a string, evaluate it as a dictionary
+                    scores_data.append(eval(score))
+                else:
+                    scores_data.append(score)
             
-            for doc in documents:
+            # Get all unique labels from the score dictionaries
+            all_labels = set()
+            for score_dict in scores_data:
+                all_labels.update(score_dict.keys())
+            labels = sorted(list(all_labels))
+            
+            # Prepare data for heatmap
+            score_matrix = []
+            documents = data['Nom_Document']
+            
+            for idx, score_dict in enumerate(scores_data):
                 doc_scores = []
-                for label in self.labels:
-                    scores = entity_scores.get((doc, label), [0])
-                    doc_scores.append(np.mean(scores))
+                for label in labels:
+                    if label in score_dict:
+                        # Calculate mean if there are multiple scores
+                        scores = score_dict[label]
+                        doc_scores.append(np.mean(scores))
+                    else:
+                        doc_scores.append(0)  # or np.nan for missing values
                 score_matrix.append(doc_scores)
             
             fig = go.Figure(data=go.Heatmap(
                 z=score_matrix,
-                x=self.labels,
+                x=labels,
                 y=documents,
                 colorscale='Blues',
                 hoverongaps=False,
                 hovertemplate="Document: %{y}<br>" +
-                             "Entity: %{x}<br>" +
-                             "Score: %{z:.2f}<br>" +
-                             "<extra></extra>"
+                            "Entity: %{x}<br>" +
+                            "Score: %{z:.2f}<br>" +
+                            "<extra></extra>"
             ))
             
             fig.update_layout(
-                title="Scores de Confiance par Entité et Document",
+                title="Scores de confiance de l’entité par document",
                 height=400 + (len(documents) * 20),
                 margin=dict(l=0, r=0, t=40, b=0),
-                xaxis_title="Type d'entité",
-                yaxis_title="Document"
+                xaxis_title="Entity Type",
+                yaxis_title="Document",
+                yaxis_autorange='reversed'  # To match document order in data
             )
             
             return fig
-            
         except Exception as e:
-            logger.error(f"Error creating confidence heatmap: {str(e)}")
-            raise
+            print(f"Error creating heatmap: {str(e)}")
+            return None
     
     def create_corrections_timeline(
         self,
@@ -280,6 +299,43 @@ class ChartGenerator:
         except Exception as e:
             logger.error(f"Error creating entity relationship graph: {str(e)}")
             raise
+
+    def create_threshold_impact(self, data: pd.DataFrame) -> go.Figure:
+        """Analyze how different confidence thresholds affect entity detection."""
+        try:
+            thresholds = np.arange(0, 1.01, 0.05)
+            entity_counts = {entity: [] for entity in self.labels}
+            
+            for threshold in thresholds:
+                for score_dict in data['Scores']:
+                    if isinstance(score_dict, str):
+                        score_dict = eval(score_dict)
+                    for entity, scores in score_dict.items():
+                        if np.mean(scores) >= threshold:
+                            entity_counts[entity].append(1)
+                        else:
+                            entity_counts[entity].append(0)
+            
+            fig = go.Figure()
+            for entity in self.labels:
+                fig.add_trace(go.Scatter(
+                    x=thresholds,
+                    y=np.cumsum(entity_counts[entity]),
+                    name=entity,
+                    mode='lines'
+                ))
+            
+            fig.update_layout(
+                title="Impact du Seuil de Confiance sur la Détection",
+                xaxis_title="Seuil de Confiance",
+                yaxis_title="Nombre d'Entités Détectées",
+                height=500
+            )
+            
+            return fig
+        except Exception as e:
+            logger.error(f"Error creating threshold impact analysis: {str(e)}")
+            raise
     
     def _create_circular_layout(self, n: int) -> List[Tuple[float, float]]:
         """
@@ -349,6 +405,45 @@ class ChartGenerator:
             logger.error(f"Error creating correction frequency chart: {str(e)}")
             raise
     
+
+
+    def create_score_distribution(self, data: pd.DataFrame) -> go.Figure:
+        """Create histogram/box plots of confidence scores distribution."""
+        try:
+            all_scores = []
+            labels = []
+            
+            for score_dict in data['Scores']:
+                if isinstance(score_dict, str):
+                    score_dict = eval(score_dict)
+                for entity, scores in score_dict.items():
+                    all_scores.extend(scores)
+                    labels.extend([entity] * len(scores))
+            
+            fig = go.Figure()
+            
+            # Add box plots for each entity type
+            for entity in set(labels):
+                entity_scores = [score for score, label in zip(all_scores, labels) if label == entity]
+                fig.add_trace(go.Box(
+                    y=entity_scores,
+                    name=entity,
+                    boxpoints='all',
+                    marker_color=self.colors.get(entity, '#000000')
+                ))
+            
+            fig.update_layout(
+                title="Distribution des Scores de Confiance par Entité",
+                yaxis_title="Score de Confiance",
+                xaxis_title="Type d'Entité",
+                height=500
+            )
+            
+            return fig
+        except Exception as e:
+            logger.error(f"Error creating score distribution: {str(e)}")
+            raise
+
     def create_dashboard(
         self,
         data: pd.DataFrame,
@@ -381,7 +476,9 @@ class ChartGenerator:
                 data,
                 entity_scores
             )
-            
+            dashboard['score_distribution'] = self.create_score_distribution(data)
+            #dashboard['threshold_impact'] = self.create_threshold_impact(data)
+
             # Corrections timeline
             if corrections:
                 dashboard['corrections_timeline'] = self.create_corrections_timeline(

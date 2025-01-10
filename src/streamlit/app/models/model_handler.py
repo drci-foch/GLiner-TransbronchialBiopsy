@@ -47,18 +47,23 @@ class ModelHandler:
         self._cache = {}
         self._cache_size = 100
         self.load_model()
-    
+        
     def load_model(self) -> None:
         """Load the GLiNER model"""
         try:
             logger.info(f"Loading model from {config.model.MODEL_PATH}")
+            # Force CPU device
+            device = torch.device('cpu')
             with self._model_lock:
                 self._model = GLiNER.from_pretrained(
                     config.model.MODEL_PATH,
-                    load_tokenizer=True
+                    load_tokenizer=True,
+                    device=device  # Specify CPU device
                 )
+                # Move model to CPU explicitly
+                self._model = self._model.to('cpu')
                 self._last_used = datetime.now()
-            logger.info("Model loaded successfully")
+            logger.info(f"Model loaded successfully on {device}")
         except Exception as e:
             logger.error(f"Error loading model: {str(e)}")
             raise RuntimeError(f"Failed to load model: {str(e)}")
@@ -152,8 +157,12 @@ class ModelHandler:
             # Ensure model is loaded
             self.ensure_model_loaded()
             
-            # Make predictions
             with self._model_lock:
+                model_device = next(self._model.parameters()).device
+                if str(model_device) != 'cpu':
+                    logger.warning(f"Model found on {model_device}, moving to CPU")
+                    self._model = self._model.to('cpu')
+                
                 raw_predictions = self._model.predict_entities(
                     text,
                     labels,
@@ -227,12 +236,15 @@ class ModelHandler:
         """Get information about the current model"""
         self.ensure_model_loaded()
         
+        # Get actual device of the model
+        model_device = next(self._model.parameters()).device
+        
         return {
             "model_path": config.model.MODEL_PATH,
             "last_used": self._last_used.isoformat() if self._last_used else None,
             "cache_size": len(self._cache),
             "labels": config.LABELS,
-            "device": "cpu", #"cuda" if torch.cuda.is_available() else "cpu",
+            "device": str(model_device),  # Show actual device
             "max_sequence_length": config.model.MAX_SEQUENCE_LENGTH
         }
     

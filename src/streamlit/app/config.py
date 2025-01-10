@@ -55,21 +55,21 @@ class Config:
     
     # Entity Colors
     COLORS: Dict[str, str] = {
-        "Site": "#A1D6A3",
-        "Nombre Total De Fragments": "#8EC8F2",
-        "Nombre Total De Fragments Alvéolés": "#F9E26E",
-        "Grade A": "#F4A3A6",
-        "Grade B": "#F4C1D6",
-        "Rejet Chronique": "#F6D02F",
-        "Coloration C4d": "#5EC7A2",
-        "Lésion Septale": "#5D9BCE",
-        "Lésion Intra-Alvéolaire": "#5D8A96",
-        "Éosinophilie": "#B2EBF2",
-        "Pneumonie Organisée": "#D3D3D3",
-        "DAD": "#F4B8D4",
-        "Infection": "#FFF5BA",
-        "Autre Pathologie": "#FFD2D2"
-    }
+    "Site": "#00487E",              # Bleu Foch foncé
+    "Nombre Total De Fragments": "#0079C0",    # Bleu Foch clair
+    "Nombre Total De Fragments Alvéolés": "#8cb924",  # Vert clair
+    "Grade A": "#3d967c",           # Vert-bleu
+    "Grade B": "#005691",           # Bleu intermédiaire
+    "Rejet Chronique": "#6e7d8c",   # Gris bleuté
+    "Coloration C4d": "#69935d",    # Vert foncé
+    "Lésion Septale": "#4a6670",    # Gris-bleu foncé
+    "Lésion Intra-Alvéolaire": "#0064A0", # Bleu moyen
+    "Éosinophilie": "#7fa5b5",      # Gris-bleu clair
+    "Pneumonie Organisée": "#5d8a7b", # Vert-gris
+    "DAD": "#587c8c",               # Bleu-gris
+    "Infection": "#76a58e",         # Vert pâle
+    "Autre Pathologie": "#8497a4"   # Gris clair
+}
     
     # Text Processing
     TEXT_PROCESSING = {
@@ -104,7 +104,7 @@ class Config:
     # Export Settings
     EXPORT = {
         "DEFAULT_FILENAME": f"resultats_analyse_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-        "CSV_ENCODING": "utf-8-sig",
+        "CSV_ENCODING": "utf-8",
         "EXCEL_SHEET_NAME": "Résultats",
         "JSON_INDENT": 2,
         "DATE_FORMAT": "%Y-%m-%d %H:%M:%S"

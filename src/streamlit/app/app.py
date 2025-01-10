@@ -14,7 +14,7 @@ import pandas as pd
 from datetime import datetime
 import logging
 from pathlib import Path
-
+import base64
 
 # Set up logging
 logging.basicConfig(
@@ -106,7 +106,59 @@ class MedicalAnnotationDashboard:
                     st.success("Inscription réussie! Vous pouvez maintenant vous connecter.")
                 else:
                     st.error("Nom d'utilisateur déjà utilisé")
-    
+
+
+    def show_processing_status(self, total_files: int, processed_files: int, filename: str = None):
+        """
+        Show processing status with a floating message and progress bar.
+        
+        Args:
+            total_files: Total number of files to process
+            processed_files: Number of files processed so far
+            filename: Name of the current file being processed
+        """
+        # Calculate progress
+        progress = processed_files / total_files if total_files > 0 else 0
+        
+        # Create floating status message
+        st.markdown("""
+            <style>
+            .floating-status {
+                position: fixed;
+                bottom: 20px;
+                right: 20px;
+                background: linear-gradient(90deg, #00487E, #0079C0);
+                color: white;
+                padding: 15px 20px;
+                border-radius: 8px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+                z-index: 999999;
+                min-width: 200px;
+                opacity: 0.95;
+            }
+            .status-progress {
+                margin-top: 8px;
+                background: rgba(255,255,255,0.2);
+                border-radius: 4px;
+                height: 4px;
+                overflow: hidden;
+            }
+            .status-bar {
+                height: 100%;
+                background: #93BE1E;
+                width: var(--progress);
+                transition: width 0.3s ease;
+            }
+            </style>
+            <div class="floating-status">
+                <div>✅ {processed_files}/{total_files} documents traités</div>
+                <div style="font-size: 0.8em; opacity: 0.8;">{filename if filename else ''}</div>
+                <div class="status-progress">
+                    <div class="status-bar" style="--progress: {progress * 100}%;"></div>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+
     def process_file(self, uploaded_file) -> bool:
         """
         Process a single uploaded file.
@@ -169,7 +221,7 @@ class MedicalAnnotationDashboard:
             # Update results dataframe
             self._update_results_dataframe(structured_data)
             
-            self.ui.show_success(f"✅ {uploaded_file.name} traité avec succès")
+            # self.ui.show_success(f"✅ {uploaded_file.name} traité avec succès")
             return True
             
         except Exception as e:
@@ -247,6 +299,26 @@ class MedicalAnnotationDashboard:
                 layout="wide"
             )
 
+            # Apply styles
+            Styles.apply_all_styles()
+
+            # Add fixed header HTML
+            user = self.user_auth.get_current_user() if hasattr(self, 'user_auth') else None
+            st.markdown(f"""
+                <div class="fixed-header">
+                    <div class="fixed-header-logo">
+                        <img src="data:image/svg+xml;base64,{base64.b64encode(open('assets/logo.svg', 'rb').read()).decode()}" alt="Logo">
+                        <span class="fixed-header-title">FochAnnot - Structuration automatique de documents</span>
+                    </div>
+                    <div class="fixed-header-user">
+                        <div class="user-avatar">🧑‍🔬</div>
+                        <span class="user-info">{user if user else 'Invité'}</span>
+                    </div>
+                </div>
+                <div class="main-content">
+                </div>
+            """, unsafe_allow_html=True)
+
             # Check if user is logged in
             if not self.user_auth.get_current_user():
                 self.show_login()
@@ -255,25 +327,17 @@ class MedicalAnnotationDashboard:
             # Initialize components after login
             self.initialize_components()
             
-            # Show logout button in sidebar
-            with st.sidebar:
-                st.markdown(f"**Utilisateur:** {self.user_auth.get_current_user()}")
-                if st.button("Se déconnecter"):
-                    self.user_auth.logout()
-                    st.rerun()
-            
-            # Apply styles
-            Styles.apply_all_styles()
+
+
             
             # Create header
             self.ui.create_header()
             
             # Create sidebar
-            threshold = self.ui.create_sidebar(self._clear_results)
-            st.session_state.confidence_threshold = threshold
+            self.ui.create_sidebar(self._clear_results)
             
             # File upload
-            uploaded_files = self.ui.create_file_uploader()
+            uploaded_files = self.ui.create_file_uploader(self._clear_results)
             
             if uploaded_files:
                 with st.spinner("Traitement des documents en cours..."):
@@ -333,13 +397,35 @@ class MedicalAnnotationDashboard:
                         hide_index=True,
                     )
                     
-                    # Add modal viewers for each file
-                    for filename in st.session_state.processed_files:
-                        if st.button(f"📄 Voir {filename}", key=f"view_{filename}"):
-                            self.ui.create_file_viewer(
-                                st.session_state.processed_files[filename],
-                                filename
+                    # Add a searchable select box for files
+                    selected_file = st.selectbox(
+                        "🔍 Rechercher un document",
+                        options=list(st.session_state.processed_files.keys()),
+                        index=None,
+                        placeholder="Choisir un document..."
+                    )
+                    # Display content of selected file
+                    if selected_file:
+                        with st.expander(f"Document: {selected_file}", expanded=True):
+                            # Check if file is PDF (assuming the file content is in bytes)
+                            try:
+                                # Display PDF viewer
+                                base64_pdf = base64.b64encode(st.session_state.processed_files[selected_file]).decode('utf-8')
+                                pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="600" type="application/pdf"></iframe>'
+                                st.markdown(pdf_display, unsafe_allow_html=True)
+                            except Exception as e:
+                                st.error("Erreur lors de l'affichage du PDF")
+                            
+                            # Download button for PDF
+                            st.download_button(
+                                "📥 Télécharger",
+                                st.session_state.processed_files[selected_file],
+                                file_name=selected_file,
+                                mime="application/pdf"
                             )
+                    
+                    # Optional: Keep the grid view as well
+                    st.divider()  # Add a visual separator
                     
                     # Download buttons
                     self.ui.create_download_buttons(display_df)
@@ -364,8 +450,8 @@ class MedicalAnnotationDashboard:
                     )
                 
                 # Add session history viewer
-                st.markdown("---")
-                self.ui.create_logs_viewer()
+                # st.markdown("---")
+                # self.ui.create_logs_viewer()
             
         except Exception as e:
             logger.error(f"Application error: {str(e)}")
